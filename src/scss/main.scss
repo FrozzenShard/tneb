@@ -1,0 +1,39 @@
+body{
+    background : $body;
+}
+#logger {
+    height : 250px;
+    max-height: 250px;
+    & p{
+        margin: 0;
+    }
+}
+
+.battle-stats {
+    & p{
+        margin : 5px 0;
+    }
+}
+
+#skills{
+    & li{
+        float : left;
+    }
+}
+
+#logger p{
+    margin: 0;
+}
+
+.prefix {
+    &.flaming {
+        color : $hinder;
+    }
+}
+
+.hinder{
+    color : $hinder;
+}
+.boost{
+    color : $boost;
+}
