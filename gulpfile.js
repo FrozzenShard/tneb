@@ -14,7 +14,6 @@ var scssFiles = [
 ];
 
 gulp.task('browserify', function(){
-    console.log(arguments);
     return browserify('./src/js/tneb/game.js', {paths : ['./node_modules', './src/js/game'] })
     .bundle()
     .pipe(source('main.js'))
@@ -38,7 +37,7 @@ gulp.task('fuckingwindows', function(){
 
 gulp.task('dev', function(){
     base = './dev/';
-    return gulp.run('sass', 'move-static', 'browserify');
+    return gulp.run('sass', 'move-static', 'fuckingwindows', 'browserify');
 });
 
 gulp.task('watch', function(){
