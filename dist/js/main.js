@@ -1,910 +1,4 @@
 (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
-module.exports = {
-    fps  : 30
-};
-},{}],2:[function(require,module,exports){
-(function(){
-    var create;
-    var Character = require('./systems/battle/character.js');
-    var Monster = require('./systems/battle/monster.js');
-    function Create(){
-        if(create) return create;
-        create = {};
-        create.Monster = function(name){
-            var ret = new Monster({name : name});
-            return ret;
-        };
-        return create;
-    }
-    module.exports = Create;
-}());
-},{"./systems/battle/character.js":7,"./systems/battle/monster.js":9}],3:[function(require,module,exports){
-(function(){
-    
-    var constants = {};
-    constants.damageTypes = {
-        physical : 'physical',
-        magical : 'magical',
-        pure : 'pure',
-        hpRemoval : 'hpRemoval',
-        manaRemoval : 'manaRemoval'
-    };
-    constants.elements = {
-        neutral : 'neutral',
-        fire : 'fire',
-        ice : 'ice',
-        water : 'water',
-        elec : 'electric',
-        light : 'light',
-        dark : 'dark',
-        earth : 'earth',
-        wind : 'wind'
-    };
-    
-    constants.armorMultiplier = 0.004;
-    constants.magicResMultiplier = 0.006;
-    constants.elementalResMultiplier = 0.0015;
-    
-    module.exports = constants;
-}());
-},{}],4:[function(require,module,exports){
-(function(){
-    var Game = window.Game = {};
-    var $ = require('jQuery');
-    var backbone = require('backbone');
-    var _ = require('underscore');
-    var config = require('./config.js');
-    var Character = require('./systems/battle/character.js');
-    var Battle = require('./systems/battle/battle.js');
-    var modApi = require('./systems/mod/modapi.js');
-    var hook = require('./systems/battle/hook.js');
-    var Create = require('./create.js');
-    var Location = require('./systems/map/location.js');
-    var events = require('./systems/map/events.js');
-    //var User = require('./user.js);
-    
-    Game.systems = {};
-    Game.timer = {
-        elapsed : 1,
-        lastTime : 1
-    };
-    Game.global = {
-        _ : _,
-        backbone : backbone,
-        modApi : modApi
-    };
-    Game.global.events = {};
-    _.extend(Game.global.events,hook);
-    Game.init = function(){
-        Game.activePlayer = new Character({},this);
-        Game.timer.lastTime = Date.now();
-        Game.loop();
-        Game.systems.battle = Battle(this);
-        Game.create = Create(this);
-    };
-    
-    Game.update = function(){
-        _.each(Game.systems,function(v,k){
-            v.update();
-        });
-    };
-    Game.render = function(){
-        _.each(Game.systems,function(v,k){
-            v.render(Game.activePlayer);
-        });
-    };
-    Game.loop = function(){
-        Game.timer.elapsed = (Date.now() - Game.timer.lastTime) / 1000;
-        Game.update();
-        Game.render();
-        //Game.render();
-        Game.timeout = setTimeout(Game.loop,1000/config.fps);
-        Game.timer.lastTime = Date.now();
-    };
-    Game.global.version = "0.0.2";
-    Game.init();
-}());
-},{"./config.js":1,"./create.js":2,"./systems/battle/battle.js":5,"./systems/battle/character.js":7,"./systems/battle/hook.js":8,"./systems/map/events.js":10,"./systems/map/location.js":11,"./systems/mod/modapi.js":12,"backbone":14,"jQuery":16,"underscore":17}],5:[function(require,module,exports){
-(function(){
-    var _ = require('underscore');
-    var $ = require('jQuery');
-    function Battle(Game){
-        var battle = {};
-        battle.log = [];
-        battle.fighterA;
-        battle.fighterB;
-        battle.Game = Game;
-        battle.active = false;
-        battle.ui = {};
-        
-        battle.init = function(){
-            this.Game.global.events.trigger('battle:systemInit');
-            this.initUi();
-        };
-        battle.initUi = function(){
-            this.ui.player = {};
-            var base = this.ui.player.playerBase = $("#player-battle-stats");
-            this.ui.player.stats = {
-                health : {$name : base.find(".health .name"), $value : base.find(".health .value")},
-                mana : {$name : base.find(".mana .name"), $value : base.find(".mana .value")},
-                str : {$name : base.find(".str .name"), $value : base.find(".str .value")},
-                dex : {$name : base.find(".dex .name"), $value : base.find(".dex .value")},
-                int : {$name : base.find(".int .name"), $value : base.find(".int .value")},
-                speed : {$name : base.find(".speed .name"), $value : base.find(".speed .value")},
-                armor : {$name : base.find(".armor .name"), $value : base.find(".armor .value")},
-                magicRes : {$name : base.find(".magic-res .name"), $value : base.find(".magic-res .value")},
-                fireRes : {$name : base.find(".fire-res .name"), $value : base.find(".fire-res .value")},
-                iceRes : {$name : base.find(".ice-res .name"), $value : base.find(".ice-res .value")},
-                waterRes : {$name : base.find(".water-res .name"), $value : base.find(".water-res .value")},
-                elecRes : {$name : base.find(".elec-res .name"), $value : base.find(".elec-res .value")},
-                earthRes : {$name : base.find(".earth-res .name"), $value : base.find(".earth-res .value")},
-                windRes : {$name : base.find(".wind-res .name"), $value : base.find(".wind-res .value")},
-                lightRes : {$name : base.find(".light-res .name"), $value : base.find(".light-res .value")},
-                darkRes : {$name : base.find(".dark-res .name"), $value : base.find(".dark-res .value")}
-            };
-            this.ui.enemy = {};
-            base = this.ui.enemy.base = $("#enemy-battle-stats");
-            this.ui.enemy.stats = {
-                health : {$name : base.find(".health .name"), $value : base.find(".health .value")},
-                mana : {$name : base.find(".mana .name"), $value : base.find(".mana .value")},
-                str : {$name : base.find(".str .name"), $value : base.find(".str .value")},
-                dex : {$name : base.find(".dex .name"), $value : base.find(".dex .value")},
-                int : {$name : base.find(".int .name"), $value : base.find(".int .value")},
-                speed : {$name : base.find(".speed .name"), $value : base.find(".speed .value")},
-                armor : {$name : base.find(".armor .name"), $value : base.find(".armor .value")},
-                magicRes : {$name : base.find(".magic-res .name"), $value : base.find(".magic-res .value")},
-                fireRes : {$name : base.find(".fire-res .name"), $value : base.find(".fire-res .value")},
-                iceRes : {$name : base.find(".ice-res .name"), $value : base.find(".ice-res .value")},
-                waterRes : {$name : base.find(".water-res .name"), $value : base.find(".water-res .value")},
-                elecRes : {$name : base.find(".elec-res .name"), $value : base.find(".elec-res .value")},
-                earthRes : {$name : base.find(".earth-res .name"), $value : base.find(".earth-res .value")},
-                windRes : {$name : base.find(".wind-res .name"), $value : base.find(".wind-res .value")},
-                lightRes : {$name : base.find(".light-res .name"), $value : base.find(".light-res .value")},
-                darkRes : {$name : base.find(".dark-res .name"), $value : base.find(".dark-res .value")}
-            };
-            base = null;
-        };
-        
-        battle.update = function(){
-            if(!this.active) return;
-            this.fighterA.currentStats.speed += this.fighterA.currentStats.speedGain * Game.timer.elapsed;
-            this.fighterB.currentStats.speed += this.fighterB.currentStats.speedGain * Game.timer.elapsed;
-            
-            if(this.fighterA.currentStats.speed > this.fighterA.currentStats.maxSpeed &&
-              this.fighterB.currentStats.speed > this.fighterB.currentStats.maxSpeed){
-                
-                if(this.fighterA.currentStats.speed > this.fighterB.currentStats.speed){
-                    this.fighterA.doAction(this.fighterB);
-                    if(this.active) this.fighterA.currentStats.speed = 0;
-                    return;
-                }else{
-                    this.fighterB.doAction(this.fighterA);
-                    if(this.active) this.fighterB.currentStats.speed = 0;
-                    return;
-                }
-            }
-            
-            if(this.fighterA.currentStats.speed > this.fighterA.currentStats.maxSpeed){
-                this.fighterA.doAction(this.fighterB);
-                this.render(true);
-                if(this.active) this.fighterA.currentStats.speed = 0;
-                return;
-            }
-            if(this.fighterB.currentStats.speed > this.fighterB.currentStats.maxSpeed){
-                this.fighterB.doAction(this.fighterA);
-                if(this.active) this.fighterB.currentStats.speed = 0;
-                return;
-            }
-        };
-        
-        battle.end = function(){
-            this.active = false;
-            return true;
-        };
-        
-
-        battle.render = function(player,enemy){
-            player = player || this.fighterA;
-            enemy = enemy || this.fighterB;
-            console.log(player);
-            if(player){
-                this.ui.player.stats.health.$value.text(player.getStat('health','current'));
-            }
-        };
-        
-        battle.start = function(fighterA,fighterB,conditions){
-            battle.clear();
-            if(!fighterA || !fighterB) return false;
-            this.fighterA = fighterA;
-            this.fighterB = fighterB;
-            Game.global.events.trigger('system:battle:start',this);
-            battle.active = true;
-            fighterA.speed = fighterB.speed = 0;
-            battle.update();
-            this.Game.global.events.once("system:character:death",this.end);
-            return this.active;
-        };
-        
-        battle.clear = function(){
-            battle.actionQueue = [];
-            battle.allCharacters = [];
-        };
-        battle.init();
-        battle.version = "0.0.1";
-        return battle;
-    }
-    module.exports = Battle;
-}());
-},{"jQuery":16,"underscore":17}],6:[function(require,module,exports){
-(function () {
-    var _ = require('underscore');
-    var constants = require('../../etc/constants.js');
-
-    function Calculator(user) {
-        this.user = user;
-    }
-
-    Calculator.prototype.reduceByArmor = function (val, source, pen) {
-        var percentApen = 0,
-            flatApen = 0,
-            armor = this.user.currentStats.armor,
-            total = val;
-        if (pen) {
-            if(pen.percent) percentApen += pen.percent.armor || 0;
-            if(pen.flat) flatApen += pen.flat.armor || 0;
-        }
-        if (source) {
-            percentApen += source.currentStats.penetration.percent.armor;
-            flatApen += source.currentStats.penetration.flat.armor;
-        }
-        armor -= armor * (percentApen * 0.01);
-        armor -= flatApen;
-        if(armor < 0) armor = 0;
-        total -= total * (armor * constants.armorMultiplier);
-        return (total < 0 ? 0 : total);
-    };
-
-    Calculator.prototype.reduceByMagicResistance = function (val, source, pen) {
-        var percentMpen = 0,
-            flatMpen = 0,
-            magicRes = this.user.currentStats.magicRes,
-            total = val;
-        if (source) {
-            percentMpen += source.currentStats.penetration.percent.magic;
-            flatMpen += source.currentStats.penetration.flat.magic;
-        }
-        if (pen) {
-            if(pen.percent) percentMpen += pen.percent.magic || 0;
-            if(pen.flat) flatMpen += pen.flat.magic || 0;
-        }
-        magicRes -= magicRes * (percentMpen * 0.01);
-        magicRes -= flatMpen;
-        if(magicRes < 0) magicRes = 0;
-        total -= total * (magicRes * constants.magicResMultiplier);
-        return (total < 0 ? 0 : total);
-    };
-
-    Calculator.prototype.reduceByElementalResistance = function (el, val, source, pen) {
-        var percentResPen = 0,
-            flatResPen = 0,
-            res = this.user.currentStats.resistances[el],
-            total = val;
-        if (source) {
-            percentResPen += source.currentStats.penetration.percent[el];
-            flatResPen += source.currentStats.penetration.flat[el];
-        }
-        if (pen) {
-            if(pen.percent) percentResPen = pen.percent[el] || 0;
-            if(pen.flat) flatResPen = pen.flat[el] || 0;
-        }
-        res -= res * (percentResPen * 0.01);
-        res -= flatResPen;
-        if(res < 0) res = 0;
-        total -= total * (res * constants.elementalResMultiplier);
-        return (total < 0 ? 0 : total);
-    };
-    module.exports = Calculator;
-
-}());
-},{"../../etc/constants.js":3,"underscore":17}],7:[function(require,module,exports){
-(function () {
-    var _ = require('underscore');
-    var utils = require('../../utils.js');
-    var constants = require('../../etc/constants.js');
-    var Calculator = require('./calculator.js');
-
-    function Character(data, Game) {
-        var stats = Character.prototype.getDefaultStats();
-        this.calculator = new Calculator(this);
-        this.isAi = true;
-        if (_.isObject(data)) {
-            utils.objOverride(stats, data, true);
-        }
-        this.currentStats = stats.currentStats;
-        this.baseStats = stats.baseStats;
-        this.equipped = stats.equipped;
-        this.inventory = [];
-        this.skills = [];
-        this.battleRating = stats.battleRating;
-        this.name = "Default name";
-        this.Game = Game;
-    }
-
-    Character.prototype.doAction = function (target) {
-        if (this.isAi) {
-            return this.aiAction(target);
-        }
-    };
-
-    Character.prototype.aiAction = function (target) {
-        this.useSkill(this.basicAttack(), target);
-    };
-
-    Character.prototype.useSkill = function (skill, target) {
-        if (!skill.cost(this, target)) return false;
-        this.Game.global.events.trigger('system:battle:cast:skill', skill, this, target);
-        skill.use(this, target);
-    };
-
-    Character.prototype.basicAttack = function () {
-        if (this.basicAttackSkill) return this.basicAttackSkill;
-        var damage;
-        var skill = {
-            name: 'Basic Attack'
-        };
-        damage = {
-            type: constants.damageTypes.physical,
-            beforeRes: 0
-        };
-        skill.use = function (user, target) {
-            damage.beforeRes = target.currentStats.physicalPower + (target.currentStats.str * 0.65);
-            return target.applyDamage({
-                skill: this,
-                user: user,
-                target: target
-            }, damage);
-        };
-        skill.cost = function () {
-            return true;
-        };
-        this.basicAttackSkill = skill;
-        return skill;
-    };
-
-    // damage = {type : physical, el : fire, beforeRes : 10, afterRes : 10, callback : f(dealt,battleIngo,damge)}
-    //source = {skill : skill, user : user, target : target}
-
-    /**
-     * Applys damage to the character(itself not the supplied source)
-     * @param {Object} source Contains refrences to the damage source.
-     * @param {Object} source.skill The skill being used
-     * @param {Character} source.user The user or owner
-     * @param {Character} source.target The target
-     * @param {Object} damage The damage object
-     * @param {String} damage.type The type of damage
-     * @param [String] damage.element The element of the damage
-     * @param {function|number} damage.beforeRes The damage before resistences are applied
-     * @param {function|number} damage.afterRes The damage after resistances are applied
-     * @param [function] damage.callback A callback that is invoked after damage is calculated but before its applied.
-     * @return {Number} The damage dealth
-     */
-    Character.prototype.applyDamage = function (source, damage) {
-        var i,
-            d,
-            el,
-            total = 0;
-        el = damage.element || constants.elements.neutral;
-        if (!damage.pure && damage.type === constants.damageTypes.physical) {
-            if (el === constants.elements.neutral) {
-                total = this.calculator.reduceByArmor(damage.beforeRes, source.user, damage.penObj);
-            } else {
-                total = this.calculator.reduceByElementalResistance(
-                    el,
-                    this.calculator.calculateArmorReduction(damage.beforeRes, damage.penObj),
-                    source.user,
-                    damage.penObj
-                );
-            }
-        } else if (!damage.pure && damage.type === constants.damageTypes.magical) {
-            if (el === constants.elements.neutral) {
-                total = this.calculator.reduceByMagicResistance(damage.beforeRes, source.user, damage);
-            } else {
-                total = this.calculator.reduceByElementalResistance(
-                    el,
-                    this.calculator.reduceByMagicResistance(damage.beforeRes, source.user, damage.penObj),
-                    source.user,
-                    damage.penObj
-                );
-            }
-        } else {
-            total += damage.beforeRes;
-        }
-        total += damage.afterRes ? damage.afterRes(source) : 0;
-        this.takeDamage(total, damage.type, el, damage.isPure);
-        if (damage.callback) damage.callback(total, damage, source);
-        return total;
-    };
-
-    Character.prototype.takeDamage = function (val, type, el, pure) {
-        this.Game.global.events.trigger('system:battle:takenDamage:', val, type, el, pure);
-        this.changeHealth(-val);
-    };
-
-    Character.prototype.changeHealth = function (val) {
-        this.currentStats.health += val;
-        if(this.currentStats.health <= 0){
-            this.Game.global.events.trigger('system:character:death', this);
-        }
-    };
-
-    Character.prototype.getDefaultStats = function () {
-        var max = 5;
-        var sRand = _.random(0, max);
-        var iRand = _.random(0, max);
-        var lRand = _.random(0, max);
-        var dRand = _.random(0, max);
-        return {
-            baseStats: {
-                level: 1,
-                health: 20,
-                mana: 6,
-                str: 5,
-                int: 5,
-                dex: 5,
-                luk: 5,
-                armor: 1,
-                physicalPower: 0,
-                magicalPower: 0,
-                magicRes: 0.2,
-                maxSpeed: 50,
-                speedGain: 10,
-                healthRegen: 0.2, // Internally represented as per second but displayed as per 5 to the player
-                manaRegen: 0.125,
-
-                statusEffects: [],
-                onHitEffects: [],
-
-                fire: 0,
-                ice: 0,
-                water: 0,
-                elec: 0,
-                earth: 0,
-                wind: 0,
-                light: 0,
-                dark: 0,
-
-                penetration: {
-                    percent: {
-                        armor: 0,
-                        magic: 0,
-                        fire: 0,
-                        ice: 0,
-                        water: 0,
-                        elec: 0,
-                        earth: 0,
-                        wind: 0,
-                        light: 0,
-                        dark: 0
-                    },
-                    flat: {
-                        armor: 0,
-                        magic: 0,
-                        fire: 0,
-                        ice: 0,
-                        water: 0,
-                        elec: 0,
-                        earth: 0,
-                        wind: 0,
-                        light: 0,
-                        dark: 0
-                    }
-                }
-            },
-            currentStats: {
-                health: 20,
-                maxHealth: 20,
-                mana: 6,
-                maxMana: 6,
-                str: 5,
-                int: 5,
-                dex: 5,
-                luk: 5,
-                armor: 1,
-                magicRes: 0.2,
-                physicalPower: 0,
-                magicalPower: 0,
-                maxSpeed: 35,
-                speedGain: 10,
-                speed: 0,
-
-                statusEffects: [],
-                onHitEffects: [],
-
-                resistances: {
-                    fire: 0,
-                    ice: 0,
-                    water: 0,
-                    elec: 0,
-                    earth: 0,
-                    wind: 0,
-                    light: 0,
-                    dark: 0
-                },
-
-                penetration: {
-                    percent: {
-                        armor: 0,
-                        magic: 0,
-                        fire: 0,
-                        ice: 0,
-                        water: 0,
-                        elec: 0,
-                        earth: 0,
-                        wind: 0,
-                        light: 0,
-                        dark: 0
-                    },
-                    flat: {
-                        armor: 0,
-                        magic: 0,
-                        fire: 0,
-                        ice: 0,
-                        water: 0,
-                        elec: 0,
-                        earth: 0,
-                        wind: 0,
-                        light: 0,
-                        dark: 0
-                    }
-                }
-            },
-            equipped: {
-                head: null,
-                top: null,
-                leftHand: null,
-                rightHand: null,
-                feet: null,
-                bottom: null,
-                accessory: null
-            },
-            battleRating: 1
-        };
-    };
-
-    module.exports = Character;
-}());
-},{"../../etc/constants.js":3,"../../utils.js":13,"./calculator.js":6,"underscore":17}],8:[function(require,module,exports){
-(function () {
-    var _ = require('underscore');
-    var pEvents = {};
-    // Regular expression used to split event strings.
-    var eventSplitter = /\s+/;
-
-    // Implement fancy features of the Events API such as multiple event
-    // names `"change blur"` and jQuery-style event maps `{change: action}`
-    // in terms of the existing API.
-    var eventsApi = function (obj, action, name, rest) {
-        if (!name) return true;
-
-        // Handle event maps.
-        if (typeof name === 'object') {
-            for (var key in name) {
-                obj[action].apply(obj, [key, name[key]].concat(rest));
-            }
-            return false;
-        }
-
-        // Handle space separated event names.
-        if (eventSplitter.test(name)) {
-            var names = name.split(eventSplitter);
-            for (var i = 0, length = names.length; i < length; i++) {
-                obj[action].apply(obj, [names[i]].concat(rest));
-            }
-            return false;
-        }
-
-        return true;
-    };
-    // A difficult-to-believe, but optimized internal dispatch function for
-    // triggering events. Tries to keep the usual cases speedy (most internal
-    // Backbone events have 3 arguments).
-    var triggerEvents = function (events, args) {
-        var ev, i = -1,
-            l = events.length,
-            a1 = args[0],
-            a2 = args[1],
-            a3 = args[2];
-        switch (args.length) {
-        case 0:
-            while (++i < l)(ev = events[i]).callback.call(ev.ctx);
-            return;
-        case 1:
-            while (++i < l)(ev = events[i]).callback.call(ev.ctx, a1);
-            return;
-        case 2:
-            while (++i < l)(ev = events[i]).callback.call(ev.ctx, a1, a2);
-            return;
-        case 3:
-            while (++i < l)(ev = events[i]).callback.call(ev.ctx, a1, a2, a3);
-            return;
-        default:
-            while (++i < l)(ev = events[i]).callback.apply(ev.ctx, args);
-            return;
-        }
-    };
-    var Events = {
-
-        // Bind an event to a `callback` function. Passing `"all"` will bind
-        // the callback to all events fired.
-        on: function (name, callback, context, priority) {
-            if (!eventsApi(this, 'on', name, [callback, context]) || !callback) return this;
-            this._events || (this._events = {});
-            var events = this._events[name] || (this._events[name] = []);
-            events.push({
-                callback: callback,
-                context: context,
-                ctx: context || this,
-                priority : priority
-            });
-            if(null == priority) priority = 500;
-            events.sort(function(a,b){return a.priority-b.priority;});
-            return this;
-        },
-
-        // Bind an event to only be triggered a single time. After the first time
-        // the callback is invoked, it will be removed.
-        once: function (name, callback, context) {
-            if (!eventsApi(this, 'once', name, [callback, context]) || !callback) return this;
-            var self = this;
-            var once = _.once(function () {
-                self.off(name, once);
-                callback.apply(this, arguments);
-            });
-            once._callback = callback;
-            return this.on(name, once, context);
-        },
-
-        // Remove one or many callbacks. If `context` is null, removes all
-        // callbacks with that function. If `callback` is null, removes all
-        // callbacks for the event. If `name` is null, removes all bound
-        // callbacks for all events.
-        off: function (name, callback, context) {
-            if (!this._events || !eventsApi(this, 'off', name, [callback, context])) return this;
-
-            // Remove all callbacks for all events.
-            if (!name && !callback && !context) {
-                this._events = void 0;
-                return this;
-            }
-
-            var names = name ? [name] : _.keys(this._events);
-            for (var i = 0, length = names.length; i < length; i++) {
-                name = names[i];
-
-                // Bail out if there are no events stored.
-                var events = this._events[name];
-                if (!events) continue;
-
-                // Remove all callbacks for this event.
-                if (!callback && !context) {
-                    delete this._events[name];
-                    continue;
-                }
-
-                // Find any remaining events.
-                var remaining = [];
-                for (var j = 0, k = events.length; j < k; j++) {
-                    var event = events[j];
-                    if (
-                        callback && callback !== event.callback &&
-                        callback !== event.callback._callback ||
-                        context && context !== event.context
-                    ) {
-                        remaining.push(event);
-                    }
-                }
-
-                // Replace events if there are any remaining.  Otherwise, clean up.
-                if (remaining.length) {
-                    this._events[name] = remaining;
-                } else {
-                    delete this._events[name];
-                }
-            }
-
-            return this;
-        },
-
-        // Trigger one or many events, firing all bound callbacks. Callbacks are
-        // passed the same arguments as `trigger` is, apart from the event name
-        // (unless you're listening on `"all"`, which will cause your callback to
-        // receive the true name of the event as the first argument).
-        trigger: function (name) {
-            if (!this._events) return this;
-            var args = Array.prototype.slice.call(arguments, 1);
-            if (!eventsApi(this, 'trigger', name, args)) return this;
-            var events = this._events[name];
-            var allEvents = this._events.all;
-            if (events) triggerEvents(events, args);
-            if (allEvents) triggerEvents(allEvents, arguments);
-            return this;
-        },
-
-        // Tell this object to stop listening to either specific events ... or
-        // to every object it's currently listening to.
-        stopListening: function (obj, name, callback) {
-            var listeningTo = this._listeningTo;
-            if (!listeningTo) return this;
-            var remove = !name && !callback;
-            if (!callback && typeof name === 'object') callback = this;
-            if (obj)(listeningTo = {})[obj._listenId] = obj;
-            for (var id in listeningTo) {
-                obj = listeningTo[id];
-                obj.off(name, callback, this);
-                if (remove || _.isEmpty(obj._events)) delete this._listeningTo[id];
-            }
-            return this;
-        }
-
-    };
-    var listenMethods = {
-        listenTo: 'on',
-        listenToOnce: 'once'
-    };
-
-    // Inversion-of-control versions of `on` and `once`. Tell *this* object to
-    // listen to an event in another object ... keeping track of what it's
-    // listening to.
-    _.each(listenMethods, function (implementation, method) {
-        Events[method] = function (obj, name, callback) {
-            var listeningTo = this._listeningTo || (this._listeningTo = {});
-            var id = obj._listenId || (obj._listenId = _.uniqueId('l'));
-            listeningTo[id] = obj;
-            if (!callback && typeof name === 'object') callback = this;
-            obj[implementation](name, callback, this);
-            return this;
-        };
-    });
-
-    // Aliases for backwards compatibility.
-    Events.bind = Events.on;
-    Events.unbind = Events.off;
-    pEvents = _.extend(pEvents,Events);
-    module.exports = pEvents;
-}());
-},{"underscore":17}],9:[function(require,module,exports){
-(function(){
-    var Character = require('./character.js');
-    
-    function Monster(){
-        Character.apply(this,arguments);
-    }
-    
-    Monster.prototype = Character.prototype;
-    module.exports = Monster;
-}());
-},{"./character.js":7}],10:[function(require,module,exports){
-(function(){
-    var _ = require('underscore');
-    var utils = require('../../utils.js');
-    var events = {};
-    events.registeredEvents = {};
-    events._oldEvents = {};
-    events.registerEvent = function(name,cb,override){
-        var ret;
-        if(this.registeredEvents[name] && !override){
-            return "Event already registred!";
-        }
-        if(override && this.registeredEvents[name]){
-            events._oldEvents[name] = events._oldEvents[name] || [];
-            events._oldEvents[name].push(this.registeredEvents[name]);
-        }
-        ret = this.registeredEvents[name] = {
-            name : name,
-            callback : cb
-        };
-        return ret;
-    };
-    
-    function SpawnEvent(Game,monster){
-        var m = Game.create.Monster("Dickhead");
-        if(Game.systems.battle.active) return false;
-        Game.systems.battle.start(Game.activePlayer,m);
-        Game.global.events.trigger("system:event:"+this.toString());
-        return m;
-    }
-    SpawnEvent.prototype.toString = function(){return "SpawnEvent";};
-    
-    module.exports = {
-        events : events,
-        SpawnEvent : SpawnEvent
-    };
-}());
-},{"../../utils.js":13,"underscore":17}],11:[function(require,module,exports){
-(function(){
-    var utils = require('../../utils.js');
-    
-    /*
-    * All events for locaction come in the array format of : [Event,TimesCanHappen,Weight]
-    * Search : A 2darray of all possible events.
-    * Event : {
-    *   name : SpawnEvent
-    *   noticeText : You have encountered a {{char.name}}! Prepare for battle!!,
-    *   data : [] For system/predefined events. Will be supplied to as the arguments
-    *   }
-    */
-    function Location(data){
-        this.searchEvents = [[{
-            name : "SpawnEvent",
-            data : ["Derpy"]
-        }, 0, 1]];
-        this.searchWeights = this.getSearchWeights();
-    }
-    
-    Location.prototype.search = function(events){
-        var i = utils.weightedRandom(this.searchWeights);
-        var e = this.searchEvents[i];
-        var theEvent = events.registeredEvents[e.name];
-        if(theEvent){
-            theEvent.callback.apply(theEvent,e.data);
-        }
-    };
-    
-    Location.prototype.getSearchWeights = function(){
-        return this.searchEvents.map(function(e){
-            return e[2];
-        });
-    };
-    
-    module.exports = Location;
-}());
-},{"../../utils.js":13}],12:[function(require,module,exports){
-(function(){
-    var modapi = {};
-    modapi.version = "0.0.1";
-    module.exports = modapi;
-}())
-},{}],13:[function(require,module,exports){
-(function(){
-    var _ = require('underscore');
-    var utils = {};
-    utils.objOverride = function(to,from,check){
-        _.each(from,function(v,k){
-            if(check && from[k]){
-                if(_.isObject(from[k]) || _.isArray(from[k]) ){
-                    utils.objOverride(to[k],from[k],check);
-                }else{
-                    to[k] = v;
-                }
-            }else{
-                if(_.isObject(from[k]) || _.isArray(from[k])){
-                    utils.objOverride(to[k],from[k],check);
-                }else{
-                    to[k] = v;
-                }
-            }
-        });
-        return to;
-    };
-    //http://codetheory.in/weighted-biased-random-number-generation-with-javascript-based-on-probability/
-    utils.weightedRandom = function(weights){
-        var totalWeight = weights.reduce(function(prev,cur){
-            return prev + cur;
-        });
-        var rand = _.random(0,totalWeight);
-        var weightSum = 0;
-        for(var i = 0; i < weights.length; i++){
-            weightSum += weights[i];
-            weightSum = +weightSum;
-            if(rand <= weightSum){
-                return i;
-            }
-        }
-    };
-
-    module.exports = utils;
-}());
-},{"underscore":17}],14:[function(require,module,exports){
 //     Backbone.js 1.1.2
 
 //     (c) 2010-2014 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
@@ -2514,1352 +1608,7 @@ module.exports = {
 
 }));
 
-},{"underscore":15}],15:[function(require,module,exports){
-//     Underscore.js 1.6.0
-//     http://underscorejs.org
-//     (c) 2009-2014 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
-//     Underscore may be freely distributed under the MIT license.
-
-(function() {
-
-  // Baseline setup
-  // --------------
-
-  // Establish the root object, `window` in the browser, or `exports` on the server.
-  var root = this;
-
-  // Save the previous value of the `_` variable.
-  var previousUnderscore = root._;
-
-  // Establish the object that gets returned to break out of a loop iteration.
-  var breaker = {};
-
-  // Save bytes in the minified (but not gzipped) version:
-  var ArrayProto = Array.prototype, ObjProto = Object.prototype, FuncProto = Function.prototype;
-
-  // Create quick reference variables for speed access to core prototypes.
-  var
-    push             = ArrayProto.push,
-    slice            = ArrayProto.slice,
-    concat           = ArrayProto.concat,
-    toString         = ObjProto.toString,
-    hasOwnProperty   = ObjProto.hasOwnProperty;
-
-  // All **ECMAScript 5** native function implementations that we hope to use
-  // are declared here.
-  var
-    nativeForEach      = ArrayProto.forEach,
-    nativeMap          = ArrayProto.map,
-    nativeReduce       = ArrayProto.reduce,
-    nativeReduceRight  = ArrayProto.reduceRight,
-    nativeFilter       = ArrayProto.filter,
-    nativeEvery        = ArrayProto.every,
-    nativeSome         = ArrayProto.some,
-    nativeIndexOf      = ArrayProto.indexOf,
-    nativeLastIndexOf  = ArrayProto.lastIndexOf,
-    nativeIsArray      = Array.isArray,
-    nativeKeys         = Object.keys,
-    nativeBind         = FuncProto.bind;
-
-  // Create a safe reference to the Underscore object for use below.
-  var _ = function(obj) {
-    if (obj instanceof _) return obj;
-    if (!(this instanceof _)) return new _(obj);
-    this._wrapped = obj;
-  };
-
-  // Export the Underscore object for **Node.js**, with
-  // backwards-compatibility for the old `require()` API. If we're in
-  // the browser, add `_` as a global object via a string identifier,
-  // for Closure Compiler "advanced" mode.
-  if (typeof exports !== 'undefined') {
-    if (typeof module !== 'undefined' && module.exports) {
-      exports = module.exports = _;
-    }
-    exports._ = _;
-  } else {
-    root._ = _;
-  }
-
-  // Current version.
-  _.VERSION = '1.6.0';
-
-  // Collection Functions
-  // --------------------
-
-  // The cornerstone, an `each` implementation, aka `forEach`.
-  // Handles objects with the built-in `forEach`, arrays, and raw objects.
-  // Delegates to **ECMAScript 5**'s native `forEach` if available.
-  var each = _.each = _.forEach = function(obj, iterator, context) {
-    if (obj == null) return obj;
-    if (nativeForEach && obj.forEach === nativeForEach) {
-      obj.forEach(iterator, context);
-    } else if (obj.length === +obj.length) {
-      for (var i = 0, length = obj.length; i < length; i++) {
-        if (iterator.call(context, obj[i], i, obj) === breaker) return;
-      }
-    } else {
-      var keys = _.keys(obj);
-      for (var i = 0, length = keys.length; i < length; i++) {
-        if (iterator.call(context, obj[keys[i]], keys[i], obj) === breaker) return;
-      }
-    }
-    return obj;
-  };
-
-  // Return the results of applying the iterator to each element.
-  // Delegates to **ECMAScript 5**'s native `map` if available.
-  _.map = _.collect = function(obj, iterator, context) {
-    var results = [];
-    if (obj == null) return results;
-    if (nativeMap && obj.map === nativeMap) return obj.map(iterator, context);
-    each(obj, function(value, index, list) {
-      results.push(iterator.call(context, value, index, list));
-    });
-    return results;
-  };
-
-  var reduceError = 'Reduce of empty array with no initial value';
-
-  // **Reduce** builds up a single result from a list of values, aka `inject`,
-  // or `foldl`. Delegates to **ECMAScript 5**'s native `reduce` if available.
-  _.reduce = _.foldl = _.inject = function(obj, iterator, memo, context) {
-    var initial = arguments.length > 2;
-    if (obj == null) obj = [];
-    if (nativeReduce && obj.reduce === nativeReduce) {
-      if (context) iterator = _.bind(iterator, context);
-      return initial ? obj.reduce(iterator, memo) : obj.reduce(iterator);
-    }
-    each(obj, function(value, index, list) {
-      if (!initial) {
-        memo = value;
-        initial = true;
-      } else {
-        memo = iterator.call(context, memo, value, index, list);
-      }
-    });
-    if (!initial) throw new TypeError(reduceError);
-    return memo;
-  };
-
-  // The right-associative version of reduce, also known as `foldr`.
-  // Delegates to **ECMAScript 5**'s native `reduceRight` if available.
-  _.reduceRight = _.foldr = function(obj, iterator, memo, context) {
-    var initial = arguments.length > 2;
-    if (obj == null) obj = [];
-    if (nativeReduceRight && obj.reduceRight === nativeReduceRight) {
-      if (context) iterator = _.bind(iterator, context);
-      return initial ? obj.reduceRight(iterator, memo) : obj.reduceRight(iterator);
-    }
-    var length = obj.length;
-    if (length !== +length) {
-      var keys = _.keys(obj);
-      length = keys.length;
-    }
-    each(obj, function(value, index, list) {
-      index = keys ? keys[--length] : --length;
-      if (!initial) {
-        memo = obj[index];
-        initial = true;
-      } else {
-        memo = iterator.call(context, memo, obj[index], index, list);
-      }
-    });
-    if (!initial) throw new TypeError(reduceError);
-    return memo;
-  };
-
-  // Return the first value which passes a truth test. Aliased as `detect`.
-  _.find = _.detect = function(obj, predicate, context) {
-    var result;
-    any(obj, function(value, index, list) {
-      if (predicate.call(context, value, index, list)) {
-        result = value;
-        return true;
-      }
-    });
-    return result;
-  };
-
-  // Return all the elements that pass a truth test.
-  // Delegates to **ECMAScript 5**'s native `filter` if available.
-  // Aliased as `select`.
-  _.filter = _.select = function(obj, predicate, context) {
-    var results = [];
-    if (obj == null) return results;
-    if (nativeFilter && obj.filter === nativeFilter) return obj.filter(predicate, context);
-    each(obj, function(value, index, list) {
-      if (predicate.call(context, value, index, list)) results.push(value);
-    });
-    return results;
-  };
-
-  // Return all the elements for which a truth test fails.
-  _.reject = function(obj, predicate, context) {
-    return _.filter(obj, function(value, index, list) {
-      return !predicate.call(context, value, index, list);
-    }, context);
-  };
-
-  // Determine whether all of the elements match a truth test.
-  // Delegates to **ECMAScript 5**'s native `every` if available.
-  // Aliased as `all`.
-  _.every = _.all = function(obj, predicate, context) {
-    predicate || (predicate = _.identity);
-    var result = true;
-    if (obj == null) return result;
-    if (nativeEvery && obj.every === nativeEvery) return obj.every(predicate, context);
-    each(obj, function(value, index, list) {
-      if (!(result = result && predicate.call(context, value, index, list))) return breaker;
-    });
-    return !!result;
-  };
-
-  // Determine if at least one element in the object matches a truth test.
-  // Delegates to **ECMAScript 5**'s native `some` if available.
-  // Aliased as `any`.
-  var any = _.some = _.any = function(obj, predicate, context) {
-    predicate || (predicate = _.identity);
-    var result = false;
-    if (obj == null) return result;
-    if (nativeSome && obj.some === nativeSome) return obj.some(predicate, context);
-    each(obj, function(value, index, list) {
-      if (result || (result = predicate.call(context, value, index, list))) return breaker;
-    });
-    return !!result;
-  };
-
-  // Determine if the array or object contains a given value (using `===`).
-  // Aliased as `include`.
-  _.contains = _.include = function(obj, target) {
-    if (obj == null) return false;
-    if (nativeIndexOf && obj.indexOf === nativeIndexOf) return obj.indexOf(target) != -1;
-    return any(obj, function(value) {
-      return value === target;
-    });
-  };
-
-  // Invoke a method (with arguments) on every item in a collection.
-  _.invoke = function(obj, method) {
-    var args = slice.call(arguments, 2);
-    var isFunc = _.isFunction(method);
-    return _.map(obj, function(value) {
-      return (isFunc ? method : value[method]).apply(value, args);
-    });
-  };
-
-  // Convenience version of a common use case of `map`: fetching a property.
-  _.pluck = function(obj, key) {
-    return _.map(obj, _.property(key));
-  };
-
-  // Convenience version of a common use case of `filter`: selecting only objects
-  // containing specific `key:value` pairs.
-  _.where = function(obj, attrs) {
-    return _.filter(obj, _.matches(attrs));
-  };
-
-  // Convenience version of a common use case of `find`: getting the first object
-  // containing specific `key:value` pairs.
-  _.findWhere = function(obj, attrs) {
-    return _.find(obj, _.matches(attrs));
-  };
-
-  // Return the maximum element or (element-based computation).
-  // Can't optimize arrays of integers longer than 65,535 elements.
-  // See [WebKit Bug 80797](https://bugs.webkit.org/show_bug.cgi?id=80797)
-  _.max = function(obj, iterator, context) {
-    if (!iterator && _.isArray(obj) && obj[0] === +obj[0] && obj.length < 65535) {
-      return Math.max.apply(Math, obj);
-    }
-    var result = -Infinity, lastComputed = -Infinity;
-    each(obj, function(value, index, list) {
-      var computed = iterator ? iterator.call(context, value, index, list) : value;
-      if (computed > lastComputed) {
-        result = value;
-        lastComputed = computed;
-      }
-    });
-    return result;
-  };
-
-  // Return the minimum element (or element-based computation).
-  _.min = function(obj, iterator, context) {
-    if (!iterator && _.isArray(obj) && obj[0] === +obj[0] && obj.length < 65535) {
-      return Math.min.apply(Math, obj);
-    }
-    var result = Infinity, lastComputed = Infinity;
-    each(obj, function(value, index, list) {
-      var computed = iterator ? iterator.call(context, value, index, list) : value;
-      if (computed < lastComputed) {
-        result = value;
-        lastComputed = computed;
-      }
-    });
-    return result;
-  };
-
-  // Shuffle an array, using the modern version of the
-  // [Fisher-Yates shuffle](http://en.wikipedia.org/wiki/Fisher–Yates_shuffle).
-  _.shuffle = function(obj) {
-    var rand;
-    var index = 0;
-    var shuffled = [];
-    each(obj, function(value) {
-      rand = _.random(index++);
-      shuffled[index - 1] = shuffled[rand];
-      shuffled[rand] = value;
-    });
-    return shuffled;
-  };
-
-  // Sample **n** random values from a collection.
-  // If **n** is not specified, returns a single random element.
-  // The internal `guard` argument allows it to work with `map`.
-  _.sample = function(obj, n, guard) {
-    if (n == null || guard) {
-      if (obj.length !== +obj.length) obj = _.values(obj);
-      return obj[_.random(obj.length - 1)];
-    }
-    return _.shuffle(obj).slice(0, Math.max(0, n));
-  };
-
-  // An internal function to generate lookup iterators.
-  var lookupIterator = function(value) {
-    if (value == null) return _.identity;
-    if (_.isFunction(value)) return value;
-    return _.property(value);
-  };
-
-  // Sort the object's values by a criterion produced by an iterator.
-  _.sortBy = function(obj, iterator, context) {
-    iterator = lookupIterator(iterator);
-    return _.pluck(_.map(obj, function(value, index, list) {
-      return {
-        value: value,
-        index: index,
-        criteria: iterator.call(context, value, index, list)
-      };
-    }).sort(function(left, right) {
-      var a = left.criteria;
-      var b = right.criteria;
-      if (a !== b) {
-        if (a > b || a === void 0) return 1;
-        if (a < b || b === void 0) return -1;
-      }
-      return left.index - right.index;
-    }), 'value');
-  };
-
-  // An internal function used for aggregate "group by" operations.
-  var group = function(behavior) {
-    return function(obj, iterator, context) {
-      var result = {};
-      iterator = lookupIterator(iterator);
-      each(obj, function(value, index) {
-        var key = iterator.call(context, value, index, obj);
-        behavior(result, key, value);
-      });
-      return result;
-    };
-  };
-
-  // Groups the object's values by a criterion. Pass either a string attribute
-  // to group by, or a function that returns the criterion.
-  _.groupBy = group(function(result, key, value) {
-    _.has(result, key) ? result[key].push(value) : result[key] = [value];
-  });
-
-  // Indexes the object's values by a criterion, similar to `groupBy`, but for
-  // when you know that your index values will be unique.
-  _.indexBy = group(function(result, key, value) {
-    result[key] = value;
-  });
-
-  // Counts instances of an object that group by a certain criterion. Pass
-  // either a string attribute to count by, or a function that returns the
-  // criterion.
-  _.countBy = group(function(result, key) {
-    _.has(result, key) ? result[key]++ : result[key] = 1;
-  });
-
-  // Use a comparator function to figure out the smallest index at which
-  // an object should be inserted so as to maintain order. Uses binary search.
-  _.sortedIndex = function(array, obj, iterator, context) {
-    iterator = lookupIterator(iterator);
-    var value = iterator.call(context, obj);
-    var low = 0, high = array.length;
-    while (low < high) {
-      var mid = (low + high) >>> 1;
-      iterator.call(context, array[mid]) < value ? low = mid + 1 : high = mid;
-    }
-    return low;
-  };
-
-  // Safely create a real, live array from anything iterable.
-  _.toArray = function(obj) {
-    if (!obj) return [];
-    if (_.isArray(obj)) return slice.call(obj);
-    if (obj.length === +obj.length) return _.map(obj, _.identity);
-    return _.values(obj);
-  };
-
-  // Return the number of elements in an object.
-  _.size = function(obj) {
-    if (obj == null) return 0;
-    return (obj.length === +obj.length) ? obj.length : _.keys(obj).length;
-  };
-
-  // Array Functions
-  // ---------------
-
-  // Get the first element of an array. Passing **n** will return the first N
-  // values in the array. Aliased as `head` and `take`. The **guard** check
-  // allows it to work with `_.map`.
-  _.first = _.head = _.take = function(array, n, guard) {
-    if (array == null) return void 0;
-    if ((n == null) || guard) return array[0];
-    if (n < 0) return [];
-    return slice.call(array, 0, n);
-  };
-
-  // Returns everything but the last entry of the array. Especially useful on
-  // the arguments object. Passing **n** will return all the values in
-  // the array, excluding the last N. The **guard** check allows it to work with
-  // `_.map`.
-  _.initial = function(array, n, guard) {
-    return slice.call(array, 0, array.length - ((n == null) || guard ? 1 : n));
-  };
-
-  // Get the last element of an array. Passing **n** will return the last N
-  // values in the array. The **guard** check allows it to work with `_.map`.
-  _.last = function(array, n, guard) {
-    if (array == null) return void 0;
-    if ((n == null) || guard) return array[array.length - 1];
-    return slice.call(array, Math.max(array.length - n, 0));
-  };
-
-  // Returns everything but the first entry of the array. Aliased as `tail` and `drop`.
-  // Especially useful on the arguments object. Passing an **n** will return
-  // the rest N values in the array. The **guard**
-  // check allows it to work with `_.map`.
-  _.rest = _.tail = _.drop = function(array, n, guard) {
-    return slice.call(array, (n == null) || guard ? 1 : n);
-  };
-
-  // Trim out all falsy values from an array.
-  _.compact = function(array) {
-    return _.filter(array, _.identity);
-  };
-
-  // Internal implementation of a recursive `flatten` function.
-  var flatten = function(input, shallow, output) {
-    if (shallow && _.every(input, _.isArray)) {
-      return concat.apply(output, input);
-    }
-    each(input, function(value) {
-      if (_.isArray(value) || _.isArguments(value)) {
-        shallow ? push.apply(output, value) : flatten(value, shallow, output);
-      } else {
-        output.push(value);
-      }
-    });
-    return output;
-  };
-
-  // Flatten out an array, either recursively (by default), or just one level.
-  _.flatten = function(array, shallow) {
-    return flatten(array, shallow, []);
-  };
-
-  // Return a version of the array that does not contain the specified value(s).
-  _.without = function(array) {
-    return _.difference(array, slice.call(arguments, 1));
-  };
-
-  // Split an array into two arrays: one whose elements all satisfy the given
-  // predicate, and one whose elements all do not satisfy the predicate.
-  _.partition = function(array, predicate) {
-    var pass = [], fail = [];
-    each(array, function(elem) {
-      (predicate(elem) ? pass : fail).push(elem);
-    });
-    return [pass, fail];
-  };
-
-  // Produce a duplicate-free version of the array. If the array has already
-  // been sorted, you have the option of using a faster algorithm.
-  // Aliased as `unique`.
-  _.uniq = _.unique = function(array, isSorted, iterator, context) {
-    if (_.isFunction(isSorted)) {
-      context = iterator;
-      iterator = isSorted;
-      isSorted = false;
-    }
-    var initial = iterator ? _.map(array, iterator, context) : array;
-    var results = [];
-    var seen = [];
-    each(initial, function(value, index) {
-      if (isSorted ? (!index || seen[seen.length - 1] !== value) : !_.contains(seen, value)) {
-        seen.push(value);
-        results.push(array[index]);
-      }
-    });
-    return results;
-  };
-
-  // Produce an array that contains the union: each distinct element from all of
-  // the passed-in arrays.
-  _.union = function() {
-    return _.uniq(_.flatten(arguments, true));
-  };
-
-  // Produce an array that contains every item shared between all the
-  // passed-in arrays.
-  _.intersection = function(array) {
-    var rest = slice.call(arguments, 1);
-    return _.filter(_.uniq(array), function(item) {
-      return _.every(rest, function(other) {
-        return _.contains(other, item);
-      });
-    });
-  };
-
-  // Take the difference between one array and a number of other arrays.
-  // Only the elements present in just the first array will remain.
-  _.difference = function(array) {
-    var rest = concat.apply(ArrayProto, slice.call(arguments, 1));
-    return _.filter(array, function(value){ return !_.contains(rest, value); });
-  };
-
-  // Zip together multiple lists into a single array -- elements that share
-  // an index go together.
-  _.zip = function() {
-    var length = _.max(_.pluck(arguments, 'length').concat(0));
-    var results = new Array(length);
-    for (var i = 0; i < length; i++) {
-      results[i] = _.pluck(arguments, '' + i);
-    }
-    return results;
-  };
-
-  // Converts lists into objects. Pass either a single array of `[key, value]`
-  // pairs, or two parallel arrays of the same length -- one of keys, and one of
-  // the corresponding values.
-  _.object = function(list, values) {
-    if (list == null) return {};
-    var result = {};
-    for (var i = 0, length = list.length; i < length; i++) {
-      if (values) {
-        result[list[i]] = values[i];
-      } else {
-        result[list[i][0]] = list[i][1];
-      }
-    }
-    return result;
-  };
-
-  // If the browser doesn't supply us with indexOf (I'm looking at you, **MSIE**),
-  // we need this function. Return the position of the first occurrence of an
-  // item in an array, or -1 if the item is not included in the array.
-  // Delegates to **ECMAScript 5**'s native `indexOf` if available.
-  // If the array is large and already in sort order, pass `true`
-  // for **isSorted** to use binary search.
-  _.indexOf = function(array, item, isSorted) {
-    if (array == null) return -1;
-    var i = 0, length = array.length;
-    if (isSorted) {
-      if (typeof isSorted == 'number') {
-        i = (isSorted < 0 ? Math.max(0, length + isSorted) : isSorted);
-      } else {
-        i = _.sortedIndex(array, item);
-        return array[i] === item ? i : -1;
-      }
-    }
-    if (nativeIndexOf && array.indexOf === nativeIndexOf) return array.indexOf(item, isSorted);
-    for (; i < length; i++) if (array[i] === item) return i;
-    return -1;
-  };
-
-  // Delegates to **ECMAScript 5**'s native `lastIndexOf` if available.
-  _.lastIndexOf = function(array, item, from) {
-    if (array == null) return -1;
-    var hasIndex = from != null;
-    if (nativeLastIndexOf && array.lastIndexOf === nativeLastIndexOf) {
-      return hasIndex ? array.lastIndexOf(item, from) : array.lastIndexOf(item);
-    }
-    var i = (hasIndex ? from : array.length);
-    while (i--) if (array[i] === item) return i;
-    return -1;
-  };
-
-  // Generate an integer Array containing an arithmetic progression. A port of
-  // the native Python `range()` function. See
-  // [the Python documentation](http://docs.python.org/library/functions.html#range).
-  _.range = function(start, stop, step) {
-    if (arguments.length <= 1) {
-      stop = start || 0;
-      start = 0;
-    }
-    step = arguments[2] || 1;
-
-    var length = Math.max(Math.ceil((stop - start) / step), 0);
-    var idx = 0;
-    var range = new Array(length);
-
-    while(idx < length) {
-      range[idx++] = start;
-      start += step;
-    }
-
-    return range;
-  };
-
-  // Function (ahem) Functions
-  // ------------------
-
-  // Reusable constructor function for prototype setting.
-  var ctor = function(){};
-
-  // Create a function bound to a given object (assigning `this`, and arguments,
-  // optionally). Delegates to **ECMAScript 5**'s native `Function.bind` if
-  // available.
-  _.bind = function(func, context) {
-    var args, bound;
-    if (nativeBind && func.bind === nativeBind) return nativeBind.apply(func, slice.call(arguments, 1));
-    if (!_.isFunction(func)) throw new TypeError;
-    args = slice.call(arguments, 2);
-    return bound = function() {
-      if (!(this instanceof bound)) return func.apply(context, args.concat(slice.call(arguments)));
-      ctor.prototype = func.prototype;
-      var self = new ctor;
-      ctor.prototype = null;
-      var result = func.apply(self, args.concat(slice.call(arguments)));
-      if (Object(result) === result) return result;
-      return self;
-    };
-  };
-
-  // Partially apply a function by creating a version that has had some of its
-  // arguments pre-filled, without changing its dynamic `this` context. _ acts
-  // as a placeholder, allowing any combination of arguments to be pre-filled.
-  _.partial = function(func) {
-    var boundArgs = slice.call(arguments, 1);
-    return function() {
-      var position = 0;
-      var args = boundArgs.slice();
-      for (var i = 0, length = args.length; i < length; i++) {
-        if (args[i] === _) args[i] = arguments[position++];
-      }
-      while (position < arguments.length) args.push(arguments[position++]);
-      return func.apply(this, args);
-    };
-  };
-
-  // Bind a number of an object's methods to that object. Remaining arguments
-  // are the method names to be bound. Useful for ensuring that all callbacks
-  // defined on an object belong to it.
-  _.bindAll = function(obj) {
-    var funcs = slice.call(arguments, 1);
-    if (funcs.length === 0) throw new Error('bindAll must be passed function names');
-    each(funcs, function(f) { obj[f] = _.bind(obj[f], obj); });
-    return obj;
-  };
-
-  // Memoize an expensive function by storing its results.
-  _.memoize = function(func, hasher) {
-    var memo = {};
-    hasher || (hasher = _.identity);
-    return function() {
-      var key = hasher.apply(this, arguments);
-      return _.has(memo, key) ? memo[key] : (memo[key] = func.apply(this, arguments));
-    };
-  };
-
-  // Delays a function for the given number of milliseconds, and then calls
-  // it with the arguments supplied.
-  _.delay = function(func, wait) {
-    var args = slice.call(arguments, 2);
-    return setTimeout(function(){ return func.apply(null, args); }, wait);
-  };
-
-  // Defers a function, scheduling it to run after the current call stack has
-  // cleared.
-  _.defer = function(func) {
-    return _.delay.apply(_, [func, 1].concat(slice.call(arguments, 1)));
-  };
-
-  // Returns a function, that, when invoked, will only be triggered at most once
-  // during a given window of time. Normally, the throttled function will run
-  // as much as it can, without ever going more than once per `wait` duration;
-  // but if you'd like to disable the execution on the leading edge, pass
-  // `{leading: false}`. To disable execution on the trailing edge, ditto.
-  _.throttle = function(func, wait, options) {
-    var context, args, result;
-    var timeout = null;
-    var previous = 0;
-    options || (options = {});
-    var later = function() {
-      previous = options.leading === false ? 0 : _.now();
-      timeout = null;
-      result = func.apply(context, args);
-      context = args = null;
-    };
-    return function() {
-      var now = _.now();
-      if (!previous && options.leading === false) previous = now;
-      var remaining = wait - (now - previous);
-      context = this;
-      args = arguments;
-      if (remaining <= 0) {
-        clearTimeout(timeout);
-        timeout = null;
-        previous = now;
-        result = func.apply(context, args);
-        context = args = null;
-      } else if (!timeout && options.trailing !== false) {
-        timeout = setTimeout(later, remaining);
-      }
-      return result;
-    };
-  };
-
-  // Returns a function, that, as long as it continues to be invoked, will not
-  // be triggered. The function will be called after it stops being called for
-  // N milliseconds. If `immediate` is passed, trigger the function on the
-  // leading edge, instead of the trailing.
-  _.debounce = function(func, wait, immediate) {
-    var timeout, args, context, timestamp, result;
-
-    var later = function() {
-      var last = _.now() - timestamp;
-      if (last < wait) {
-        timeout = setTimeout(later, wait - last);
-      } else {
-        timeout = null;
-        if (!immediate) {
-          result = func.apply(context, args);
-          context = args = null;
-        }
-      }
-    };
-
-    return function() {
-      context = this;
-      args = arguments;
-      timestamp = _.now();
-      var callNow = immediate && !timeout;
-      if (!timeout) {
-        timeout = setTimeout(later, wait);
-      }
-      if (callNow) {
-        result = func.apply(context, args);
-        context = args = null;
-      }
-
-      return result;
-    };
-  };
-
-  // Returns a function that will be executed at most one time, no matter how
-  // often you call it. Useful for lazy initialization.
-  _.once = function(func) {
-    var ran = false, memo;
-    return function() {
-      if (ran) return memo;
-      ran = true;
-      memo = func.apply(this, arguments);
-      func = null;
-      return memo;
-    };
-  };
-
-  // Returns the first function passed as an argument to the second,
-  // allowing you to adjust arguments, run code before and after, and
-  // conditionally execute the original function.
-  _.wrap = function(func, wrapper) {
-    return _.partial(wrapper, func);
-  };
-
-  // Returns a function that is the composition of a list of functions, each
-  // consuming the return value of the function that follows.
-  _.compose = function() {
-    var funcs = arguments;
-    return function() {
-      var args = arguments;
-      for (var i = funcs.length - 1; i >= 0; i--) {
-        args = [funcs[i].apply(this, args)];
-      }
-      return args[0];
-    };
-  };
-
-  // Returns a function that will only be executed after being called N times.
-  _.after = function(times, func) {
-    return function() {
-      if (--times < 1) {
-        return func.apply(this, arguments);
-      }
-    };
-  };
-
-  // Object Functions
-  // ----------------
-
-  // Retrieve the names of an object's properties.
-  // Delegates to **ECMAScript 5**'s native `Object.keys`
-  _.keys = function(obj) {
-    if (!_.isObject(obj)) return [];
-    if (nativeKeys) return nativeKeys(obj);
-    var keys = [];
-    for (var key in obj) if (_.has(obj, key)) keys.push(key);
-    return keys;
-  };
-
-  // Retrieve the values of an object's properties.
-  _.values = function(obj) {
-    var keys = _.keys(obj);
-    var length = keys.length;
-    var values = new Array(length);
-    for (var i = 0; i < length; i++) {
-      values[i] = obj[keys[i]];
-    }
-    return values;
-  };
-
-  // Convert an object into a list of `[key, value]` pairs.
-  _.pairs = function(obj) {
-    var keys = _.keys(obj);
-    var length = keys.length;
-    var pairs = new Array(length);
-    for (var i = 0; i < length; i++) {
-      pairs[i] = [keys[i], obj[keys[i]]];
-    }
-    return pairs;
-  };
-
-  // Invert the keys and values of an object. The values must be serializable.
-  _.invert = function(obj) {
-    var result = {};
-    var keys = _.keys(obj);
-    for (var i = 0, length = keys.length; i < length; i++) {
-      result[obj[keys[i]]] = keys[i];
-    }
-    return result;
-  };
-
-  // Return a sorted list of the function names available on the object.
-  // Aliased as `methods`
-  _.functions = _.methods = function(obj) {
-    var names = [];
-    for (var key in obj) {
-      if (_.isFunction(obj[key])) names.push(key);
-    }
-    return names.sort();
-  };
-
-  // Extend a given object with all the properties in passed-in object(s).
-  _.extend = function(obj) {
-    each(slice.call(arguments, 1), function(source) {
-      if (source) {
-        for (var prop in source) {
-          obj[prop] = source[prop];
-        }
-      }
-    });
-    return obj;
-  };
-
-  // Return a copy of the object only containing the whitelisted properties.
-  _.pick = function(obj) {
-    var copy = {};
-    var keys = concat.apply(ArrayProto, slice.call(arguments, 1));
-    each(keys, function(key) {
-      if (key in obj) copy[key] = obj[key];
-    });
-    return copy;
-  };
-
-   // Return a copy of the object without the blacklisted properties.
-  _.omit = function(obj) {
-    var copy = {};
-    var keys = concat.apply(ArrayProto, slice.call(arguments, 1));
-    for (var key in obj) {
-      if (!_.contains(keys, key)) copy[key] = obj[key];
-    }
-    return copy;
-  };
-
-  // Fill in a given object with default properties.
-  _.defaults = function(obj) {
-    each(slice.call(arguments, 1), function(source) {
-      if (source) {
-        for (var prop in source) {
-          if (obj[prop] === void 0) obj[prop] = source[prop];
-        }
-      }
-    });
-    return obj;
-  };
-
-  // Create a (shallow-cloned) duplicate of an object.
-  _.clone = function(obj) {
-    if (!_.isObject(obj)) return obj;
-    return _.isArray(obj) ? obj.slice() : _.extend({}, obj);
-  };
-
-  // Invokes interceptor with the obj, and then returns obj.
-  // The primary purpose of this method is to "tap into" a method chain, in
-  // order to perform operations on intermediate results within the chain.
-  _.tap = function(obj, interceptor) {
-    interceptor(obj);
-    return obj;
-  };
-
-  // Internal recursive comparison function for `isEqual`.
-  var eq = function(a, b, aStack, bStack) {
-    // Identical objects are equal. `0 === -0`, but they aren't identical.
-    // See the [Harmony `egal` proposal](http://wiki.ecmascript.org/doku.php?id=harmony:egal).
-    if (a === b) return a !== 0 || 1 / a == 1 / b;
-    // A strict comparison is necessary because `null == undefined`.
-    if (a == null || b == null) return a === b;
-    // Unwrap any wrapped objects.
-    if (a instanceof _) a = a._wrapped;
-    if (b instanceof _) b = b._wrapped;
-    // Compare `[[Class]]` names.
-    var className = toString.call(a);
-    if (className != toString.call(b)) return false;
-    switch (className) {
-      // Strings, numbers, dates, and booleans are compared by value.
-      case '[object String]':
-        // Primitives and their corresponding object wrappers are equivalent; thus, `"5"` is
-        // equivalent to `new String("5")`.
-        return a == String(b);
-      case '[object Number]':
-        // `NaN`s are equivalent, but non-reflexive. An `egal` comparison is performed for
-        // other numeric values.
-        return a != +a ? b != +b : (a == 0 ? 1 / a == 1 / b : a == +b);
-      case '[object Date]':
-      case '[object Boolean]':
-        // Coerce dates and booleans to numeric primitive values. Dates are compared by their
-        // millisecond representations. Note that invalid dates with millisecond representations
-        // of `NaN` are not equivalent.
-        return +a == +b;
-      // RegExps are compared by their source patterns and flags.
-      case '[object RegExp]':
-        return a.source == b.source &&
-               a.global == b.global &&
-               a.multiline == b.multiline &&
-               a.ignoreCase == b.ignoreCase;
-    }
-    if (typeof a != 'object' || typeof b != 'object') return false;
-    // Assume equality for cyclic structures. The algorithm for detecting cyclic
-    // structures is adapted from ES 5.1 section 15.12.3, abstract operation `JO`.
-    var length = aStack.length;
-    while (length--) {
-      // Linear search. Performance is inversely proportional to the number of
-      // unique nested structures.
-      if (aStack[length] == a) return bStack[length] == b;
-    }
-    // Objects with different constructors are not equivalent, but `Object`s
-    // from different frames are.
-    var aCtor = a.constructor, bCtor = b.constructor;
-    if (aCtor !== bCtor && !(_.isFunction(aCtor) && (aCtor instanceof aCtor) &&
-                             _.isFunction(bCtor) && (bCtor instanceof bCtor))
-                        && ('constructor' in a && 'constructor' in b)) {
-      return false;
-    }
-    // Add the first object to the stack of traversed objects.
-    aStack.push(a);
-    bStack.push(b);
-    var size = 0, result = true;
-    // Recursively compare objects and arrays.
-    if (className == '[object Array]') {
-      // Compare array lengths to determine if a deep comparison is necessary.
-      size = a.length;
-      result = size == b.length;
-      if (result) {
-        // Deep compare the contents, ignoring non-numeric properties.
-        while (size--) {
-          if (!(result = eq(a[size], b[size], aStack, bStack))) break;
-        }
-      }
-    } else {
-      // Deep compare objects.
-      for (var key in a) {
-        if (_.has(a, key)) {
-          // Count the expected number of properties.
-          size++;
-          // Deep compare each member.
-          if (!(result = _.has(b, key) && eq(a[key], b[key], aStack, bStack))) break;
-        }
-      }
-      // Ensure that both objects contain the same number of properties.
-      if (result) {
-        for (key in b) {
-          if (_.has(b, key) && !(size--)) break;
-        }
-        result = !size;
-      }
-    }
-    // Remove the first object from the stack of traversed objects.
-    aStack.pop();
-    bStack.pop();
-    return result;
-  };
-
-  // Perform a deep comparison to check if two objects are equal.
-  _.isEqual = function(a, b) {
-    return eq(a, b, [], []);
-  };
-
-  // Is a given array, string, or object empty?
-  // An "empty" object has no enumerable own-properties.
-  _.isEmpty = function(obj) {
-    if (obj == null) return true;
-    if (_.isArray(obj) || _.isString(obj)) return obj.length === 0;
-    for (var key in obj) if (_.has(obj, key)) return false;
-    return true;
-  };
-
-  // Is a given value a DOM element?
-  _.isElement = function(obj) {
-    return !!(obj && obj.nodeType === 1);
-  };
-
-  // Is a given value an array?
-  // Delegates to ECMA5's native Array.isArray
-  _.isArray = nativeIsArray || function(obj) {
-    return toString.call(obj) == '[object Array]';
-  };
-
-  // Is a given variable an object?
-  _.isObject = function(obj) {
-    return obj === Object(obj);
-  };
-
-  // Add some isType methods: isArguments, isFunction, isString, isNumber, isDate, isRegExp.
-  each(['Arguments', 'Function', 'String', 'Number', 'Date', 'RegExp'], function(name) {
-    _['is' + name] = function(obj) {
-      return toString.call(obj) == '[object ' + name + ']';
-    };
-  });
-
-  // Define a fallback version of the method in browsers (ahem, IE), where
-  // there isn't any inspectable "Arguments" type.
-  if (!_.isArguments(arguments)) {
-    _.isArguments = function(obj) {
-      return !!(obj && _.has(obj, 'callee'));
-    };
-  }
-
-  // Optimize `isFunction` if appropriate.
-  if (typeof (/./) !== 'function') {
-    _.isFunction = function(obj) {
-      return typeof obj === 'function';
-    };
-  }
-
-  // Is a given object a finite number?
-  _.isFinite = function(obj) {
-    return isFinite(obj) && !isNaN(parseFloat(obj));
-  };
-
-  // Is the given value `NaN`? (NaN is the only number which does not equal itself).
-  _.isNaN = function(obj) {
-    return _.isNumber(obj) && obj != +obj;
-  };
-
-  // Is a given value a boolean?
-  _.isBoolean = function(obj) {
-    return obj === true || obj === false || toString.call(obj) == '[object Boolean]';
-  };
-
-  // Is a given value equal to null?
-  _.isNull = function(obj) {
-    return obj === null;
-  };
-
-  // Is a given variable undefined?
-  _.isUndefined = function(obj) {
-    return obj === void 0;
-  };
-
-  // Shortcut function for checking if an object has a given property directly
-  // on itself (in other words, not on a prototype).
-  _.has = function(obj, key) {
-    return hasOwnProperty.call(obj, key);
-  };
-
-  // Utility Functions
-  // -----------------
-
-  // Run Underscore.js in *noConflict* mode, returning the `_` variable to its
-  // previous owner. Returns a reference to the Underscore object.
-  _.noConflict = function() {
-    root._ = previousUnderscore;
-    return this;
-  };
-
-  // Keep the identity function around for default iterators.
-  _.identity = function(value) {
-    return value;
-  };
-
-  _.constant = function(value) {
-    return function () {
-      return value;
-    };
-  };
-
-  _.property = function(key) {
-    return function(obj) {
-      return obj[key];
-    };
-  };
-
-  // Returns a predicate for checking whether an object has a given set of `key:value` pairs.
-  _.matches = function(attrs) {
-    return function(obj) {
-      if (obj === attrs) return true; //avoid comparing an object to itself.
-      for (var key in attrs) {
-        if (attrs[key] !== obj[key])
-          return false;
-      }
-      return true;
-    }
-  };
-
-  // Run a function **n** times.
-  _.times = function(n, iterator, context) {
-    var accum = Array(Math.max(0, n));
-    for (var i = 0; i < n; i++) accum[i] = iterator.call(context, i);
-    return accum;
-  };
-
-  // Return a random integer between min and max (inclusive).
-  _.random = function(min, max) {
-    if (max == null) {
-      max = min;
-      min = 0;
-    }
-    return min + Math.floor(Math.random() * (max - min + 1));
-  };
-
-  // A (possibly faster) way to get the current timestamp as an integer.
-  _.now = Date.now || function() { return new Date().getTime(); };
-
-  // List of HTML entities for escaping.
-  var entityMap = {
-    escape: {
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#x27;'
-    }
-  };
-  entityMap.unescape = _.invert(entityMap.escape);
-
-  // Regexes containing the keys and values listed immediately above.
-  var entityRegexes = {
-    escape:   new RegExp('[' + _.keys(entityMap.escape).join('') + ']', 'g'),
-    unescape: new RegExp('(' + _.keys(entityMap.unescape).join('|') + ')', 'g')
-  };
-
-  // Functions for escaping and unescaping strings to/from HTML interpolation.
-  _.each(['escape', 'unescape'], function(method) {
-    _[method] = function(string) {
-      if (string == null) return '';
-      return ('' + string).replace(entityRegexes[method], function(match) {
-        return entityMap[method][match];
-      });
-    };
-  });
-
-  // If the value of the named `property` is a function then invoke it with the
-  // `object` as context; otherwise, return it.
-  _.result = function(object, property) {
-    if (object == null) return void 0;
-    var value = object[property];
-    return _.isFunction(value) ? value.call(object) : value;
-  };
-
-  // Add your own custom functions to the Underscore object.
-  _.mixin = function(obj) {
-    each(_.functions(obj), function(name) {
-      var func = _[name] = obj[name];
-      _.prototype[name] = function() {
-        var args = [this._wrapped];
-        push.apply(args, arguments);
-        return result.call(this, func.apply(_, args));
-      };
-    });
-  };
-
-  // Generate a unique integer id (unique within the entire client session).
-  // Useful for temporary DOM ids.
-  var idCounter = 0;
-  _.uniqueId = function(prefix) {
-    var id = ++idCounter + '';
-    return prefix ? prefix + id : id;
-  };
-
-  // By default, Underscore uses ERB-style template delimiters, change the
-  // following template settings to use alternative delimiters.
-  _.templateSettings = {
-    evaluate    : /<%([\s\S]+?)%>/g,
-    interpolate : /<%=([\s\S]+?)%>/g,
-    escape      : /<%-([\s\S]+?)%>/g
-  };
-
-  // When customizing `templateSettings`, if you don't want to define an
-  // interpolation, evaluation or escaping regex, we need one that is
-  // guaranteed not to match.
-  var noMatch = /(.)^/;
-
-  // Certain characters need to be escaped so that they can be put into a
-  // string literal.
-  var escapes = {
-    "'":      "'",
-    '\\':     '\\',
-    '\r':     'r',
-    '\n':     'n',
-    '\t':     't',
-    '\u2028': 'u2028',
-    '\u2029': 'u2029'
-  };
-
-  var escaper = /\\|'|\r|\n|\t|\u2028|\u2029/g;
-
-  // JavaScript micro-templating, similar to John Resig's implementation.
-  // Underscore templating handles arbitrary delimiters, preserves whitespace,
-  // and correctly escapes quotes within interpolated code.
-  _.template = function(text, data, settings) {
-    var render;
-    settings = _.defaults({}, settings, _.templateSettings);
-
-    // Combine delimiters into one regular expression via alternation.
-    var matcher = new RegExp([
-      (settings.escape || noMatch).source,
-      (settings.interpolate || noMatch).source,
-      (settings.evaluate || noMatch).source
-    ].join('|') + '|$', 'g');
-
-    // Compile the template source, escaping string literals appropriately.
-    var index = 0;
-    var source = "__p+='";
-    text.replace(matcher, function(match, escape, interpolate, evaluate, offset) {
-      source += text.slice(index, offset)
-        .replace(escaper, function(match) { return '\\' + escapes[match]; });
-
-      if (escape) {
-        source += "'+\n((__t=(" + escape + "))==null?'':_.escape(__t))+\n'";
-      }
-      if (interpolate) {
-        source += "'+\n((__t=(" + interpolate + "))==null?'':__t)+\n'";
-      }
-      if (evaluate) {
-        source += "';\n" + evaluate + "\n__p+='";
-      }
-      index = offset + match.length;
-      return match;
-    });
-    source += "';\n";
-
-    // If a variable is not specified, place data values in local scope.
-    if (!settings.variable) source = 'with(obj||{}){\n' + source + '}\n';
-
-    source = "var __t,__p='',__j=Array.prototype.join," +
-      "print=function(){__p+=__j.call(arguments,'');};\n" +
-      source + "return __p;\n";
-
-    try {
-      render = new Function(settings.variable || 'obj', '_', source);
-    } catch (e) {
-      e.source = source;
-      throw e;
-    }
-
-    if (data) return render(data, _);
-    var template = function(data) {
-      return render.call(this, data, _);
-    };
-
-    // Provide the compiled function source as a convenience for precompilation.
-    template.source = 'function(' + (settings.variable || 'obj') + '){\n' + source + '}';
-
-    return template;
-  };
-
-  // Add a "chain" function, which will delegate to the wrapper.
-  _.chain = function(obj) {
-    return _(obj).chain();
-  };
-
-  // OOP
-  // ---------------
-  // If Underscore is called as a function, it returns a wrapped object that
-  // can be used OO-style. This wrapper holds altered versions of all the
-  // underscore functions. Wrapped objects may be chained.
-
-  // Helper function to continue chaining intermediate results.
-  var result = function(obj) {
-    return this._chain ? _(obj).chain() : obj;
-  };
-
-  // Add all of the Underscore functions to the wrapper object.
-  _.mixin(_);
-
-  // Add all mutator Array functions to the wrapper.
-  each(['pop', 'push', 'reverse', 'shift', 'sort', 'splice', 'unshift'], function(name) {
-    var method = ArrayProto[name];
-    _.prototype[name] = function() {
-      var obj = this._wrapped;
-      method.apply(obj, arguments);
-      if ((name == 'shift' || name == 'splice') && obj.length === 0) delete obj[0];
-      return result.call(this, obj);
-    };
-  });
-
-  // Add all accessor Array functions to the wrapper.
-  each(['concat', 'join', 'slice'], function(name) {
-    var method = ArrayProto[name];
-    _.prototype[name] = function() {
-      return result.call(this, method.apply(this._wrapped, arguments));
-    };
-  });
-
-  _.extend(_.prototype, {
-
-    // Start chaining a wrapped Underscore object.
-    chain: function() {
-      this._chain = true;
-      return this;
-    },
-
-    // Extracts the result from a wrapped and chained object.
-    value: function() {
-      return this._wrapped;
-    }
-
-  });
-
-  // AMD registration happens at the end for compatibility with AMD loaders
-  // that may not enforce next-turn semantics on modules. Even though general
-  // practice for AMD registration is to be anonymous, underscore registers
-  // as a named module because, like jQuery, it is a base library that is
-  // popular enough to be bundled in a third party lib, but not be part of
-  // an AMD load request. Those cases could generate an error when an
-  // anonymous define() is called outside of a loader request.
-  if (typeof define === 'function' && define.amd) {
-    define('underscore', [], function() {
-      return _;
-    });
-  }
-}).call(this);
-
-},{}],16:[function(require,module,exports){
+},{"underscore":3}],2:[function(require,module,exports){
 /*!
  * jQuery JavaScript Library v1.11.1
  * http://jquery.com/
@@ -14169,6 +11918,2686 @@ return jQuery;
 
 }));
 
+},{}],3:[function(require,module,exports){
+//     Underscore.js 1.6.0
+//     http://underscorejs.org
+//     (c) 2009-2014 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
+//     Underscore may be freely distributed under the MIT license.
+
+(function() {
+
+  // Baseline setup
+  // --------------
+
+  // Establish the root object, `window` in the browser, or `exports` on the server.
+  var root = this;
+
+  // Save the previous value of the `_` variable.
+  var previousUnderscore = root._;
+
+  // Establish the object that gets returned to break out of a loop iteration.
+  var breaker = {};
+
+  // Save bytes in the minified (but not gzipped) version:
+  var ArrayProto = Array.prototype, ObjProto = Object.prototype, FuncProto = Function.prototype;
+
+  // Create quick reference variables for speed access to core prototypes.
+  var
+    push             = ArrayProto.push,
+    slice            = ArrayProto.slice,
+    concat           = ArrayProto.concat,
+    toString         = ObjProto.toString,
+    hasOwnProperty   = ObjProto.hasOwnProperty;
+
+  // All **ECMAScript 5** native function implementations that we hope to use
+  // are declared here.
+  var
+    nativeForEach      = ArrayProto.forEach,
+    nativeMap          = ArrayProto.map,
+    nativeReduce       = ArrayProto.reduce,
+    nativeReduceRight  = ArrayProto.reduceRight,
+    nativeFilter       = ArrayProto.filter,
+    nativeEvery        = ArrayProto.every,
+    nativeSome         = ArrayProto.some,
+    nativeIndexOf      = ArrayProto.indexOf,
+    nativeLastIndexOf  = ArrayProto.lastIndexOf,
+    nativeIsArray      = Array.isArray,
+    nativeKeys         = Object.keys,
+    nativeBind         = FuncProto.bind;
+
+  // Create a safe reference to the Underscore object for use below.
+  var _ = function(obj) {
+    if (obj instanceof _) return obj;
+    if (!(this instanceof _)) return new _(obj);
+    this._wrapped = obj;
+  };
+
+  // Export the Underscore object for **Node.js**, with
+  // backwards-compatibility for the old `require()` API. If we're in
+  // the browser, add `_` as a global object via a string identifier,
+  // for Closure Compiler "advanced" mode.
+  if (typeof exports !== 'undefined') {
+    if (typeof module !== 'undefined' && module.exports) {
+      exports = module.exports = _;
+    }
+    exports._ = _;
+  } else {
+    root._ = _;
+  }
+
+  // Current version.
+  _.VERSION = '1.6.0';
+
+  // Collection Functions
+  // --------------------
+
+  // The cornerstone, an `each` implementation, aka `forEach`.
+  // Handles objects with the built-in `forEach`, arrays, and raw objects.
+  // Delegates to **ECMAScript 5**'s native `forEach` if available.
+  var each = _.each = _.forEach = function(obj, iterator, context) {
+    if (obj == null) return obj;
+    if (nativeForEach && obj.forEach === nativeForEach) {
+      obj.forEach(iterator, context);
+    } else if (obj.length === +obj.length) {
+      for (var i = 0, length = obj.length; i < length; i++) {
+        if (iterator.call(context, obj[i], i, obj) === breaker) return;
+      }
+    } else {
+      var keys = _.keys(obj);
+      for (var i = 0, length = keys.length; i < length; i++) {
+        if (iterator.call(context, obj[keys[i]], keys[i], obj) === breaker) return;
+      }
+    }
+    return obj;
+  };
+
+  // Return the results of applying the iterator to each element.
+  // Delegates to **ECMAScript 5**'s native `map` if available.
+  _.map = _.collect = function(obj, iterator, context) {
+    var results = [];
+    if (obj == null) return results;
+    if (nativeMap && obj.map === nativeMap) return obj.map(iterator, context);
+    each(obj, function(value, index, list) {
+      results.push(iterator.call(context, value, index, list));
+    });
+    return results;
+  };
+
+  var reduceError = 'Reduce of empty array with no initial value';
+
+  // **Reduce** builds up a single result from a list of values, aka `inject`,
+  // or `foldl`. Delegates to **ECMAScript 5**'s native `reduce` if available.
+  _.reduce = _.foldl = _.inject = function(obj, iterator, memo, context) {
+    var initial = arguments.length > 2;
+    if (obj == null) obj = [];
+    if (nativeReduce && obj.reduce === nativeReduce) {
+      if (context) iterator = _.bind(iterator, context);
+      return initial ? obj.reduce(iterator, memo) : obj.reduce(iterator);
+    }
+    each(obj, function(value, index, list) {
+      if (!initial) {
+        memo = value;
+        initial = true;
+      } else {
+        memo = iterator.call(context, memo, value, index, list);
+      }
+    });
+    if (!initial) throw new TypeError(reduceError);
+    return memo;
+  };
+
+  // The right-associative version of reduce, also known as `foldr`.
+  // Delegates to **ECMAScript 5**'s native `reduceRight` if available.
+  _.reduceRight = _.foldr = function(obj, iterator, memo, context) {
+    var initial = arguments.length > 2;
+    if (obj == null) obj = [];
+    if (nativeReduceRight && obj.reduceRight === nativeReduceRight) {
+      if (context) iterator = _.bind(iterator, context);
+      return initial ? obj.reduceRight(iterator, memo) : obj.reduceRight(iterator);
+    }
+    var length = obj.length;
+    if (length !== +length) {
+      var keys = _.keys(obj);
+      length = keys.length;
+    }
+    each(obj, function(value, index, list) {
+      index = keys ? keys[--length] : --length;
+      if (!initial) {
+        memo = obj[index];
+        initial = true;
+      } else {
+        memo = iterator.call(context, memo, obj[index], index, list);
+      }
+    });
+    if (!initial) throw new TypeError(reduceError);
+    return memo;
+  };
+
+  // Return the first value which passes a truth test. Aliased as `detect`.
+  _.find = _.detect = function(obj, predicate, context) {
+    var result;
+    any(obj, function(value, index, list) {
+      if (predicate.call(context, value, index, list)) {
+        result = value;
+        return true;
+      }
+    });
+    return result;
+  };
+
+  // Return all the elements that pass a truth test.
+  // Delegates to **ECMAScript 5**'s native `filter` if available.
+  // Aliased as `select`.
+  _.filter = _.select = function(obj, predicate, context) {
+    var results = [];
+    if (obj == null) return results;
+    if (nativeFilter && obj.filter === nativeFilter) return obj.filter(predicate, context);
+    each(obj, function(value, index, list) {
+      if (predicate.call(context, value, index, list)) results.push(value);
+    });
+    return results;
+  };
+
+  // Return all the elements for which a truth test fails.
+  _.reject = function(obj, predicate, context) {
+    return _.filter(obj, function(value, index, list) {
+      return !predicate.call(context, value, index, list);
+    }, context);
+  };
+
+  // Determine whether all of the elements match a truth test.
+  // Delegates to **ECMAScript 5**'s native `every` if available.
+  // Aliased as `all`.
+  _.every = _.all = function(obj, predicate, context) {
+    predicate || (predicate = _.identity);
+    var result = true;
+    if (obj == null) return result;
+    if (nativeEvery && obj.every === nativeEvery) return obj.every(predicate, context);
+    each(obj, function(value, index, list) {
+      if (!(result = result && predicate.call(context, value, index, list))) return breaker;
+    });
+    return !!result;
+  };
+
+  // Determine if at least one element in the object matches a truth test.
+  // Delegates to **ECMAScript 5**'s native `some` if available.
+  // Aliased as `any`.
+  var any = _.some = _.any = function(obj, predicate, context) {
+    predicate || (predicate = _.identity);
+    var result = false;
+    if (obj == null) return result;
+    if (nativeSome && obj.some === nativeSome) return obj.some(predicate, context);
+    each(obj, function(value, index, list) {
+      if (result || (result = predicate.call(context, value, index, list))) return breaker;
+    });
+    return !!result;
+  };
+
+  // Determine if the array or object contains a given value (using `===`).
+  // Aliased as `include`.
+  _.contains = _.include = function(obj, target) {
+    if (obj == null) return false;
+    if (nativeIndexOf && obj.indexOf === nativeIndexOf) return obj.indexOf(target) != -1;
+    return any(obj, function(value) {
+      return value === target;
+    });
+  };
+
+  // Invoke a method (with arguments) on every item in a collection.
+  _.invoke = function(obj, method) {
+    var args = slice.call(arguments, 2);
+    var isFunc = _.isFunction(method);
+    return _.map(obj, function(value) {
+      return (isFunc ? method : value[method]).apply(value, args);
+    });
+  };
+
+  // Convenience version of a common use case of `map`: fetching a property.
+  _.pluck = function(obj, key) {
+    return _.map(obj, _.property(key));
+  };
+
+  // Convenience version of a common use case of `filter`: selecting only objects
+  // containing specific `key:value` pairs.
+  _.where = function(obj, attrs) {
+    return _.filter(obj, _.matches(attrs));
+  };
+
+  // Convenience version of a common use case of `find`: getting the first object
+  // containing specific `key:value` pairs.
+  _.findWhere = function(obj, attrs) {
+    return _.find(obj, _.matches(attrs));
+  };
+
+  // Return the maximum element or (element-based computation).
+  // Can't optimize arrays of integers longer than 65,535 elements.
+  // See [WebKit Bug 80797](https://bugs.webkit.org/show_bug.cgi?id=80797)
+  _.max = function(obj, iterator, context) {
+    if (!iterator && _.isArray(obj) && obj[0] === +obj[0] && obj.length < 65535) {
+      return Math.max.apply(Math, obj);
+    }
+    var result = -Infinity, lastComputed = -Infinity;
+    each(obj, function(value, index, list) {
+      var computed = iterator ? iterator.call(context, value, index, list) : value;
+      if (computed > lastComputed) {
+        result = value;
+        lastComputed = computed;
+      }
+    });
+    return result;
+  };
+
+  // Return the minimum element (or element-based computation).
+  _.min = function(obj, iterator, context) {
+    if (!iterator && _.isArray(obj) && obj[0] === +obj[0] && obj.length < 65535) {
+      return Math.min.apply(Math, obj);
+    }
+    var result = Infinity, lastComputed = Infinity;
+    each(obj, function(value, index, list) {
+      var computed = iterator ? iterator.call(context, value, index, list) : value;
+      if (computed < lastComputed) {
+        result = value;
+        lastComputed = computed;
+      }
+    });
+    return result;
+  };
+
+  // Shuffle an array, using the modern version of the
+  // [Fisher-Yates shuffle](http://en.wikipedia.org/wiki/Fisher–Yates_shuffle).
+  _.shuffle = function(obj) {
+    var rand;
+    var index = 0;
+    var shuffled = [];
+    each(obj, function(value) {
+      rand = _.random(index++);
+      shuffled[index - 1] = shuffled[rand];
+      shuffled[rand] = value;
+    });
+    return shuffled;
+  };
+
+  // Sample **n** random values from a collection.
+  // If **n** is not specified, returns a single random element.
+  // The internal `guard` argument allows it to work with `map`.
+  _.sample = function(obj, n, guard) {
+    if (n == null || guard) {
+      if (obj.length !== +obj.length) obj = _.values(obj);
+      return obj[_.random(obj.length - 1)];
+    }
+    return _.shuffle(obj).slice(0, Math.max(0, n));
+  };
+
+  // An internal function to generate lookup iterators.
+  var lookupIterator = function(value) {
+    if (value == null) return _.identity;
+    if (_.isFunction(value)) return value;
+    return _.property(value);
+  };
+
+  // Sort the object's values by a criterion produced by an iterator.
+  _.sortBy = function(obj, iterator, context) {
+    iterator = lookupIterator(iterator);
+    return _.pluck(_.map(obj, function(value, index, list) {
+      return {
+        value: value,
+        index: index,
+        criteria: iterator.call(context, value, index, list)
+      };
+    }).sort(function(left, right) {
+      var a = left.criteria;
+      var b = right.criteria;
+      if (a !== b) {
+        if (a > b || a === void 0) return 1;
+        if (a < b || b === void 0) return -1;
+      }
+      return left.index - right.index;
+    }), 'value');
+  };
+
+  // An internal function used for aggregate "group by" operations.
+  var group = function(behavior) {
+    return function(obj, iterator, context) {
+      var result = {};
+      iterator = lookupIterator(iterator);
+      each(obj, function(value, index) {
+        var key = iterator.call(context, value, index, obj);
+        behavior(result, key, value);
+      });
+      return result;
+    };
+  };
+
+  // Groups the object's values by a criterion. Pass either a string attribute
+  // to group by, or a function that returns the criterion.
+  _.groupBy = group(function(result, key, value) {
+    _.has(result, key) ? result[key].push(value) : result[key] = [value];
+  });
+
+  // Indexes the object's values by a criterion, similar to `groupBy`, but for
+  // when you know that your index values will be unique.
+  _.indexBy = group(function(result, key, value) {
+    result[key] = value;
+  });
+
+  // Counts instances of an object that group by a certain criterion. Pass
+  // either a string attribute to count by, or a function that returns the
+  // criterion.
+  _.countBy = group(function(result, key) {
+    _.has(result, key) ? result[key]++ : result[key] = 1;
+  });
+
+  // Use a comparator function to figure out the smallest index at which
+  // an object should be inserted so as to maintain order. Uses binary search.
+  _.sortedIndex = function(array, obj, iterator, context) {
+    iterator = lookupIterator(iterator);
+    var value = iterator.call(context, obj);
+    var low = 0, high = array.length;
+    while (low < high) {
+      var mid = (low + high) >>> 1;
+      iterator.call(context, array[mid]) < value ? low = mid + 1 : high = mid;
+    }
+    return low;
+  };
+
+  // Safely create a real, live array from anything iterable.
+  _.toArray = function(obj) {
+    if (!obj) return [];
+    if (_.isArray(obj)) return slice.call(obj);
+    if (obj.length === +obj.length) return _.map(obj, _.identity);
+    return _.values(obj);
+  };
+
+  // Return the number of elements in an object.
+  _.size = function(obj) {
+    if (obj == null) return 0;
+    return (obj.length === +obj.length) ? obj.length : _.keys(obj).length;
+  };
+
+  // Array Functions
+  // ---------------
+
+  // Get the first element of an array. Passing **n** will return the first N
+  // values in the array. Aliased as `head` and `take`. The **guard** check
+  // allows it to work with `_.map`.
+  _.first = _.head = _.take = function(array, n, guard) {
+    if (array == null) return void 0;
+    if ((n == null) || guard) return array[0];
+    if (n < 0) return [];
+    return slice.call(array, 0, n);
+  };
+
+  // Returns everything but the last entry of the array. Especially useful on
+  // the arguments object. Passing **n** will return all the values in
+  // the array, excluding the last N. The **guard** check allows it to work with
+  // `_.map`.
+  _.initial = function(array, n, guard) {
+    return slice.call(array, 0, array.length - ((n == null) || guard ? 1 : n));
+  };
+
+  // Get the last element of an array. Passing **n** will return the last N
+  // values in the array. The **guard** check allows it to work with `_.map`.
+  _.last = function(array, n, guard) {
+    if (array == null) return void 0;
+    if ((n == null) || guard) return array[array.length - 1];
+    return slice.call(array, Math.max(array.length - n, 0));
+  };
+
+  // Returns everything but the first entry of the array. Aliased as `tail` and `drop`.
+  // Especially useful on the arguments object. Passing an **n** will return
+  // the rest N values in the array. The **guard**
+  // check allows it to work with `_.map`.
+  _.rest = _.tail = _.drop = function(array, n, guard) {
+    return slice.call(array, (n == null) || guard ? 1 : n);
+  };
+
+  // Trim out all falsy values from an array.
+  _.compact = function(array) {
+    return _.filter(array, _.identity);
+  };
+
+  // Internal implementation of a recursive `flatten` function.
+  var flatten = function(input, shallow, output) {
+    if (shallow && _.every(input, _.isArray)) {
+      return concat.apply(output, input);
+    }
+    each(input, function(value) {
+      if (_.isArray(value) || _.isArguments(value)) {
+        shallow ? push.apply(output, value) : flatten(value, shallow, output);
+      } else {
+        output.push(value);
+      }
+    });
+    return output;
+  };
+
+  // Flatten out an array, either recursively (by default), or just one level.
+  _.flatten = function(array, shallow) {
+    return flatten(array, shallow, []);
+  };
+
+  // Return a version of the array that does not contain the specified value(s).
+  _.without = function(array) {
+    return _.difference(array, slice.call(arguments, 1));
+  };
+
+  // Split an array into two arrays: one whose elements all satisfy the given
+  // predicate, and one whose elements all do not satisfy the predicate.
+  _.partition = function(array, predicate) {
+    var pass = [], fail = [];
+    each(array, function(elem) {
+      (predicate(elem) ? pass : fail).push(elem);
+    });
+    return [pass, fail];
+  };
+
+  // Produce a duplicate-free version of the array. If the array has already
+  // been sorted, you have the option of using a faster algorithm.
+  // Aliased as `unique`.
+  _.uniq = _.unique = function(array, isSorted, iterator, context) {
+    if (_.isFunction(isSorted)) {
+      context = iterator;
+      iterator = isSorted;
+      isSorted = false;
+    }
+    var initial = iterator ? _.map(array, iterator, context) : array;
+    var results = [];
+    var seen = [];
+    each(initial, function(value, index) {
+      if (isSorted ? (!index || seen[seen.length - 1] !== value) : !_.contains(seen, value)) {
+        seen.push(value);
+        results.push(array[index]);
+      }
+    });
+    return results;
+  };
+
+  // Produce an array that contains the union: each distinct element from all of
+  // the passed-in arrays.
+  _.union = function() {
+    return _.uniq(_.flatten(arguments, true));
+  };
+
+  // Produce an array that contains every item shared between all the
+  // passed-in arrays.
+  _.intersection = function(array) {
+    var rest = slice.call(arguments, 1);
+    return _.filter(_.uniq(array), function(item) {
+      return _.every(rest, function(other) {
+        return _.contains(other, item);
+      });
+    });
+  };
+
+  // Take the difference between one array and a number of other arrays.
+  // Only the elements present in just the first array will remain.
+  _.difference = function(array) {
+    var rest = concat.apply(ArrayProto, slice.call(arguments, 1));
+    return _.filter(array, function(value){ return !_.contains(rest, value); });
+  };
+
+  // Zip together multiple lists into a single array -- elements that share
+  // an index go together.
+  _.zip = function() {
+    var length = _.max(_.pluck(arguments, 'length').concat(0));
+    var results = new Array(length);
+    for (var i = 0; i < length; i++) {
+      results[i] = _.pluck(arguments, '' + i);
+    }
+    return results;
+  };
+
+  // Converts lists into objects. Pass either a single array of `[key, value]`
+  // pairs, or two parallel arrays of the same length -- one of keys, and one of
+  // the corresponding values.
+  _.object = function(list, values) {
+    if (list == null) return {};
+    var result = {};
+    for (var i = 0, length = list.length; i < length; i++) {
+      if (values) {
+        result[list[i]] = values[i];
+      } else {
+        result[list[i][0]] = list[i][1];
+      }
+    }
+    return result;
+  };
+
+  // If the browser doesn't supply us with indexOf (I'm looking at you, **MSIE**),
+  // we need this function. Return the position of the first occurrence of an
+  // item in an array, or -1 if the item is not included in the array.
+  // Delegates to **ECMAScript 5**'s native `indexOf` if available.
+  // If the array is large and already in sort order, pass `true`
+  // for **isSorted** to use binary search.
+  _.indexOf = function(array, item, isSorted) {
+    if (array == null) return -1;
+    var i = 0, length = array.length;
+    if (isSorted) {
+      if (typeof isSorted == 'number') {
+        i = (isSorted < 0 ? Math.max(0, length + isSorted) : isSorted);
+      } else {
+        i = _.sortedIndex(array, item);
+        return array[i] === item ? i : -1;
+      }
+    }
+    if (nativeIndexOf && array.indexOf === nativeIndexOf) return array.indexOf(item, isSorted);
+    for (; i < length; i++) if (array[i] === item) return i;
+    return -1;
+  };
+
+  // Delegates to **ECMAScript 5**'s native `lastIndexOf` if available.
+  _.lastIndexOf = function(array, item, from) {
+    if (array == null) return -1;
+    var hasIndex = from != null;
+    if (nativeLastIndexOf && array.lastIndexOf === nativeLastIndexOf) {
+      return hasIndex ? array.lastIndexOf(item, from) : array.lastIndexOf(item);
+    }
+    var i = (hasIndex ? from : array.length);
+    while (i--) if (array[i] === item) return i;
+    return -1;
+  };
+
+  // Generate an integer Array containing an arithmetic progression. A port of
+  // the native Python `range()` function. See
+  // [the Python documentation](http://docs.python.org/library/functions.html#range).
+  _.range = function(start, stop, step) {
+    if (arguments.length <= 1) {
+      stop = start || 0;
+      start = 0;
+    }
+    step = arguments[2] || 1;
+
+    var length = Math.max(Math.ceil((stop - start) / step), 0);
+    var idx = 0;
+    var range = new Array(length);
+
+    while(idx < length) {
+      range[idx++] = start;
+      start += step;
+    }
+
+    return range;
+  };
+
+  // Function (ahem) Functions
+  // ------------------
+
+  // Reusable constructor function for prototype setting.
+  var ctor = function(){};
+
+  // Create a function bound to a given object (assigning `this`, and arguments,
+  // optionally). Delegates to **ECMAScript 5**'s native `Function.bind` if
+  // available.
+  _.bind = function(func, context) {
+    var args, bound;
+    if (nativeBind && func.bind === nativeBind) return nativeBind.apply(func, slice.call(arguments, 1));
+    if (!_.isFunction(func)) throw new TypeError;
+    args = slice.call(arguments, 2);
+    return bound = function() {
+      if (!(this instanceof bound)) return func.apply(context, args.concat(slice.call(arguments)));
+      ctor.prototype = func.prototype;
+      var self = new ctor;
+      ctor.prototype = null;
+      var result = func.apply(self, args.concat(slice.call(arguments)));
+      if (Object(result) === result) return result;
+      return self;
+    };
+  };
+
+  // Partially apply a function by creating a version that has had some of its
+  // arguments pre-filled, without changing its dynamic `this` context. _ acts
+  // as a placeholder, allowing any combination of arguments to be pre-filled.
+  _.partial = function(func) {
+    var boundArgs = slice.call(arguments, 1);
+    return function() {
+      var position = 0;
+      var args = boundArgs.slice();
+      for (var i = 0, length = args.length; i < length; i++) {
+        if (args[i] === _) args[i] = arguments[position++];
+      }
+      while (position < arguments.length) args.push(arguments[position++]);
+      return func.apply(this, args);
+    };
+  };
+
+  // Bind a number of an object's methods to that object. Remaining arguments
+  // are the method names to be bound. Useful for ensuring that all callbacks
+  // defined on an object belong to it.
+  _.bindAll = function(obj) {
+    var funcs = slice.call(arguments, 1);
+    if (funcs.length === 0) throw new Error('bindAll must be passed function names');
+    each(funcs, function(f) { obj[f] = _.bind(obj[f], obj); });
+    return obj;
+  };
+
+  // Memoize an expensive function by storing its results.
+  _.memoize = function(func, hasher) {
+    var memo = {};
+    hasher || (hasher = _.identity);
+    return function() {
+      var key = hasher.apply(this, arguments);
+      return _.has(memo, key) ? memo[key] : (memo[key] = func.apply(this, arguments));
+    };
+  };
+
+  // Delays a function for the given number of milliseconds, and then calls
+  // it with the arguments supplied.
+  _.delay = function(func, wait) {
+    var args = slice.call(arguments, 2);
+    return setTimeout(function(){ return func.apply(null, args); }, wait);
+  };
+
+  // Defers a function, scheduling it to run after the current call stack has
+  // cleared.
+  _.defer = function(func) {
+    return _.delay.apply(_, [func, 1].concat(slice.call(arguments, 1)));
+  };
+
+  // Returns a function, that, when invoked, will only be triggered at most once
+  // during a given window of time. Normally, the throttled function will run
+  // as much as it can, without ever going more than once per `wait` duration;
+  // but if you'd like to disable the execution on the leading edge, pass
+  // `{leading: false}`. To disable execution on the trailing edge, ditto.
+  _.throttle = function(func, wait, options) {
+    var context, args, result;
+    var timeout = null;
+    var previous = 0;
+    options || (options = {});
+    var later = function() {
+      previous = options.leading === false ? 0 : _.now();
+      timeout = null;
+      result = func.apply(context, args);
+      context = args = null;
+    };
+    return function() {
+      var now = _.now();
+      if (!previous && options.leading === false) previous = now;
+      var remaining = wait - (now - previous);
+      context = this;
+      args = arguments;
+      if (remaining <= 0) {
+        clearTimeout(timeout);
+        timeout = null;
+        previous = now;
+        result = func.apply(context, args);
+        context = args = null;
+      } else if (!timeout && options.trailing !== false) {
+        timeout = setTimeout(later, remaining);
+      }
+      return result;
+    };
+  };
+
+  // Returns a function, that, as long as it continues to be invoked, will not
+  // be triggered. The function will be called after it stops being called for
+  // N milliseconds. If `immediate` is passed, trigger the function on the
+  // leading edge, instead of the trailing.
+  _.debounce = function(func, wait, immediate) {
+    var timeout, args, context, timestamp, result;
+
+    var later = function() {
+      var last = _.now() - timestamp;
+      if (last < wait) {
+        timeout = setTimeout(later, wait - last);
+      } else {
+        timeout = null;
+        if (!immediate) {
+          result = func.apply(context, args);
+          context = args = null;
+        }
+      }
+    };
+
+    return function() {
+      context = this;
+      args = arguments;
+      timestamp = _.now();
+      var callNow = immediate && !timeout;
+      if (!timeout) {
+        timeout = setTimeout(later, wait);
+      }
+      if (callNow) {
+        result = func.apply(context, args);
+        context = args = null;
+      }
+
+      return result;
+    };
+  };
+
+  // Returns a function that will be executed at most one time, no matter how
+  // often you call it. Useful for lazy initialization.
+  _.once = function(func) {
+    var ran = false, memo;
+    return function() {
+      if (ran) return memo;
+      ran = true;
+      memo = func.apply(this, arguments);
+      func = null;
+      return memo;
+    };
+  };
+
+  // Returns the first function passed as an argument to the second,
+  // allowing you to adjust arguments, run code before and after, and
+  // conditionally execute the original function.
+  _.wrap = function(func, wrapper) {
+    return _.partial(wrapper, func);
+  };
+
+  // Returns a function that is the composition of a list of functions, each
+  // consuming the return value of the function that follows.
+  _.compose = function() {
+    var funcs = arguments;
+    return function() {
+      var args = arguments;
+      for (var i = funcs.length - 1; i >= 0; i--) {
+        args = [funcs[i].apply(this, args)];
+      }
+      return args[0];
+    };
+  };
+
+  // Returns a function that will only be executed after being called N times.
+  _.after = function(times, func) {
+    return function() {
+      if (--times < 1) {
+        return func.apply(this, arguments);
+      }
+    };
+  };
+
+  // Object Functions
+  // ----------------
+
+  // Retrieve the names of an object's properties.
+  // Delegates to **ECMAScript 5**'s native `Object.keys`
+  _.keys = function(obj) {
+    if (!_.isObject(obj)) return [];
+    if (nativeKeys) return nativeKeys(obj);
+    var keys = [];
+    for (var key in obj) if (_.has(obj, key)) keys.push(key);
+    return keys;
+  };
+
+  // Retrieve the values of an object's properties.
+  _.values = function(obj) {
+    var keys = _.keys(obj);
+    var length = keys.length;
+    var values = new Array(length);
+    for (var i = 0; i < length; i++) {
+      values[i] = obj[keys[i]];
+    }
+    return values;
+  };
+
+  // Convert an object into a list of `[key, value]` pairs.
+  _.pairs = function(obj) {
+    var keys = _.keys(obj);
+    var length = keys.length;
+    var pairs = new Array(length);
+    for (var i = 0; i < length; i++) {
+      pairs[i] = [keys[i], obj[keys[i]]];
+    }
+    return pairs;
+  };
+
+  // Invert the keys and values of an object. The values must be serializable.
+  _.invert = function(obj) {
+    var result = {};
+    var keys = _.keys(obj);
+    for (var i = 0, length = keys.length; i < length; i++) {
+      result[obj[keys[i]]] = keys[i];
+    }
+    return result;
+  };
+
+  // Return a sorted list of the function names available on the object.
+  // Aliased as `methods`
+  _.functions = _.methods = function(obj) {
+    var names = [];
+    for (var key in obj) {
+      if (_.isFunction(obj[key])) names.push(key);
+    }
+    return names.sort();
+  };
+
+  // Extend a given object with all the properties in passed-in object(s).
+  _.extend = function(obj) {
+    each(slice.call(arguments, 1), function(source) {
+      if (source) {
+        for (var prop in source) {
+          obj[prop] = source[prop];
+        }
+      }
+    });
+    return obj;
+  };
+
+  // Return a copy of the object only containing the whitelisted properties.
+  _.pick = function(obj) {
+    var copy = {};
+    var keys = concat.apply(ArrayProto, slice.call(arguments, 1));
+    each(keys, function(key) {
+      if (key in obj) copy[key] = obj[key];
+    });
+    return copy;
+  };
+
+   // Return a copy of the object without the blacklisted properties.
+  _.omit = function(obj) {
+    var copy = {};
+    var keys = concat.apply(ArrayProto, slice.call(arguments, 1));
+    for (var key in obj) {
+      if (!_.contains(keys, key)) copy[key] = obj[key];
+    }
+    return copy;
+  };
+
+  // Fill in a given object with default properties.
+  _.defaults = function(obj) {
+    each(slice.call(arguments, 1), function(source) {
+      if (source) {
+        for (var prop in source) {
+          if (obj[prop] === void 0) obj[prop] = source[prop];
+        }
+      }
+    });
+    return obj;
+  };
+
+  // Create a (shallow-cloned) duplicate of an object.
+  _.clone = function(obj) {
+    if (!_.isObject(obj)) return obj;
+    return _.isArray(obj) ? obj.slice() : _.extend({}, obj);
+  };
+
+  // Invokes interceptor with the obj, and then returns obj.
+  // The primary purpose of this method is to "tap into" a method chain, in
+  // order to perform operations on intermediate results within the chain.
+  _.tap = function(obj, interceptor) {
+    interceptor(obj);
+    return obj;
+  };
+
+  // Internal recursive comparison function for `isEqual`.
+  var eq = function(a, b, aStack, bStack) {
+    // Identical objects are equal. `0 === -0`, but they aren't identical.
+    // See the [Harmony `egal` proposal](http://wiki.ecmascript.org/doku.php?id=harmony:egal).
+    if (a === b) return a !== 0 || 1 / a == 1 / b;
+    // A strict comparison is necessary because `null == undefined`.
+    if (a == null || b == null) return a === b;
+    // Unwrap any wrapped objects.
+    if (a instanceof _) a = a._wrapped;
+    if (b instanceof _) b = b._wrapped;
+    // Compare `[[Class]]` names.
+    var className = toString.call(a);
+    if (className != toString.call(b)) return false;
+    switch (className) {
+      // Strings, numbers, dates, and booleans are compared by value.
+      case '[object String]':
+        // Primitives and their corresponding object wrappers are equivalent; thus, `"5"` is
+        // equivalent to `new String("5")`.
+        return a == String(b);
+      case '[object Number]':
+        // `NaN`s are equivalent, but non-reflexive. An `egal` comparison is performed for
+        // other numeric values.
+        return a != +a ? b != +b : (a == 0 ? 1 / a == 1 / b : a == +b);
+      case '[object Date]':
+      case '[object Boolean]':
+        // Coerce dates and booleans to numeric primitive values. Dates are compared by their
+        // millisecond representations. Note that invalid dates with millisecond representations
+        // of `NaN` are not equivalent.
+        return +a == +b;
+      // RegExps are compared by their source patterns and flags.
+      case '[object RegExp]':
+        return a.source == b.source &&
+               a.global == b.global &&
+               a.multiline == b.multiline &&
+               a.ignoreCase == b.ignoreCase;
+    }
+    if (typeof a != 'object' || typeof b != 'object') return false;
+    // Assume equality for cyclic structures. The algorithm for detecting cyclic
+    // structures is adapted from ES 5.1 section 15.12.3, abstract operation `JO`.
+    var length = aStack.length;
+    while (length--) {
+      // Linear search. Performance is inversely proportional to the number of
+      // unique nested structures.
+      if (aStack[length] == a) return bStack[length] == b;
+    }
+    // Objects with different constructors are not equivalent, but `Object`s
+    // from different frames are.
+    var aCtor = a.constructor, bCtor = b.constructor;
+    if (aCtor !== bCtor && !(_.isFunction(aCtor) && (aCtor instanceof aCtor) &&
+                             _.isFunction(bCtor) && (bCtor instanceof bCtor))
+                        && ('constructor' in a && 'constructor' in b)) {
+      return false;
+    }
+    // Add the first object to the stack of traversed objects.
+    aStack.push(a);
+    bStack.push(b);
+    var size = 0, result = true;
+    // Recursively compare objects and arrays.
+    if (className == '[object Array]') {
+      // Compare array lengths to determine if a deep comparison is necessary.
+      size = a.length;
+      result = size == b.length;
+      if (result) {
+        // Deep compare the contents, ignoring non-numeric properties.
+        while (size--) {
+          if (!(result = eq(a[size], b[size], aStack, bStack))) break;
+        }
+      }
+    } else {
+      // Deep compare objects.
+      for (var key in a) {
+        if (_.has(a, key)) {
+          // Count the expected number of properties.
+          size++;
+          // Deep compare each member.
+          if (!(result = _.has(b, key) && eq(a[key], b[key], aStack, bStack))) break;
+        }
+      }
+      // Ensure that both objects contain the same number of properties.
+      if (result) {
+        for (key in b) {
+          if (_.has(b, key) && !(size--)) break;
+        }
+        result = !size;
+      }
+    }
+    // Remove the first object from the stack of traversed objects.
+    aStack.pop();
+    bStack.pop();
+    return result;
+  };
+
+  // Perform a deep comparison to check if two objects are equal.
+  _.isEqual = function(a, b) {
+    return eq(a, b, [], []);
+  };
+
+  // Is a given array, string, or object empty?
+  // An "empty" object has no enumerable own-properties.
+  _.isEmpty = function(obj) {
+    if (obj == null) return true;
+    if (_.isArray(obj) || _.isString(obj)) return obj.length === 0;
+    for (var key in obj) if (_.has(obj, key)) return false;
+    return true;
+  };
+
+  // Is a given value a DOM element?
+  _.isElement = function(obj) {
+    return !!(obj && obj.nodeType === 1);
+  };
+
+  // Is a given value an array?
+  // Delegates to ECMA5's native Array.isArray
+  _.isArray = nativeIsArray || function(obj) {
+    return toString.call(obj) == '[object Array]';
+  };
+
+  // Is a given variable an object?
+  _.isObject = function(obj) {
+    return obj === Object(obj);
+  };
+
+  // Add some isType methods: isArguments, isFunction, isString, isNumber, isDate, isRegExp.
+  each(['Arguments', 'Function', 'String', 'Number', 'Date', 'RegExp'], function(name) {
+    _['is' + name] = function(obj) {
+      return toString.call(obj) == '[object ' + name + ']';
+    };
+  });
+
+  // Define a fallback version of the method in browsers (ahem, IE), where
+  // there isn't any inspectable "Arguments" type.
+  if (!_.isArguments(arguments)) {
+    _.isArguments = function(obj) {
+      return !!(obj && _.has(obj, 'callee'));
+    };
+  }
+
+  // Optimize `isFunction` if appropriate.
+  if (typeof (/./) !== 'function') {
+    _.isFunction = function(obj) {
+      return typeof obj === 'function';
+    };
+  }
+
+  // Is a given object a finite number?
+  _.isFinite = function(obj) {
+    return isFinite(obj) && !isNaN(parseFloat(obj));
+  };
+
+  // Is the given value `NaN`? (NaN is the only number which does not equal itself).
+  _.isNaN = function(obj) {
+    return _.isNumber(obj) && obj != +obj;
+  };
+
+  // Is a given value a boolean?
+  _.isBoolean = function(obj) {
+    return obj === true || obj === false || toString.call(obj) == '[object Boolean]';
+  };
+
+  // Is a given value equal to null?
+  _.isNull = function(obj) {
+    return obj === null;
+  };
+
+  // Is a given variable undefined?
+  _.isUndefined = function(obj) {
+    return obj === void 0;
+  };
+
+  // Shortcut function for checking if an object has a given property directly
+  // on itself (in other words, not on a prototype).
+  _.has = function(obj, key) {
+    return hasOwnProperty.call(obj, key);
+  };
+
+  // Utility Functions
+  // -----------------
+
+  // Run Underscore.js in *noConflict* mode, returning the `_` variable to its
+  // previous owner. Returns a reference to the Underscore object.
+  _.noConflict = function() {
+    root._ = previousUnderscore;
+    return this;
+  };
+
+  // Keep the identity function around for default iterators.
+  _.identity = function(value) {
+    return value;
+  };
+
+  _.constant = function(value) {
+    return function () {
+      return value;
+    };
+  };
+
+  _.property = function(key) {
+    return function(obj) {
+      return obj[key];
+    };
+  };
+
+  // Returns a predicate for checking whether an object has a given set of `key:value` pairs.
+  _.matches = function(attrs) {
+    return function(obj) {
+      if (obj === attrs) return true; //avoid comparing an object to itself.
+      for (var key in attrs) {
+        if (attrs[key] !== obj[key])
+          return false;
+      }
+      return true;
+    }
+  };
+
+  // Run a function **n** times.
+  _.times = function(n, iterator, context) {
+    var accum = Array(Math.max(0, n));
+    for (var i = 0; i < n; i++) accum[i] = iterator.call(context, i);
+    return accum;
+  };
+
+  // Return a random integer between min and max (inclusive).
+  _.random = function(min, max) {
+    if (max == null) {
+      max = min;
+      min = 0;
+    }
+    return min + Math.floor(Math.random() * (max - min + 1));
+  };
+
+  // A (possibly faster) way to get the current timestamp as an integer.
+  _.now = Date.now || function() { return new Date().getTime(); };
+
+  // List of HTML entities for escaping.
+  var entityMap = {
+    escape: {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#x27;'
+    }
+  };
+  entityMap.unescape = _.invert(entityMap.escape);
+
+  // Regexes containing the keys and values listed immediately above.
+  var entityRegexes = {
+    escape:   new RegExp('[' + _.keys(entityMap.escape).join('') + ']', 'g'),
+    unescape: new RegExp('(' + _.keys(entityMap.unescape).join('|') + ')', 'g')
+  };
+
+  // Functions for escaping and unescaping strings to/from HTML interpolation.
+  _.each(['escape', 'unescape'], function(method) {
+    _[method] = function(string) {
+      if (string == null) return '';
+      return ('' + string).replace(entityRegexes[method], function(match) {
+        return entityMap[method][match];
+      });
+    };
+  });
+
+  // If the value of the named `property` is a function then invoke it with the
+  // `object` as context; otherwise, return it.
+  _.result = function(object, property) {
+    if (object == null) return void 0;
+    var value = object[property];
+    return _.isFunction(value) ? value.call(object) : value;
+  };
+
+  // Add your own custom functions to the Underscore object.
+  _.mixin = function(obj) {
+    each(_.functions(obj), function(name) {
+      var func = _[name] = obj[name];
+      _.prototype[name] = function() {
+        var args = [this._wrapped];
+        push.apply(args, arguments);
+        return result.call(this, func.apply(_, args));
+      };
+    });
+  };
+
+  // Generate a unique integer id (unique within the entire client session).
+  // Useful for temporary DOM ids.
+  var idCounter = 0;
+  _.uniqueId = function(prefix) {
+    var id = ++idCounter + '';
+    return prefix ? prefix + id : id;
+  };
+
+  // By default, Underscore uses ERB-style template delimiters, change the
+  // following template settings to use alternative delimiters.
+  _.templateSettings = {
+    evaluate    : /<%([\s\S]+?)%>/g,
+    interpolate : /<%=([\s\S]+?)%>/g,
+    escape      : /<%-([\s\S]+?)%>/g
+  };
+
+  // When customizing `templateSettings`, if you don't want to define an
+  // interpolation, evaluation or escaping regex, we need one that is
+  // guaranteed not to match.
+  var noMatch = /(.)^/;
+
+  // Certain characters need to be escaped so that they can be put into a
+  // string literal.
+  var escapes = {
+    "'":      "'",
+    '\\':     '\\',
+    '\r':     'r',
+    '\n':     'n',
+    '\t':     't',
+    '\u2028': 'u2028',
+    '\u2029': 'u2029'
+  };
+
+  var escaper = /\\|'|\r|\n|\t|\u2028|\u2029/g;
+
+  // JavaScript micro-templating, similar to John Resig's implementation.
+  // Underscore templating handles arbitrary delimiters, preserves whitespace,
+  // and correctly escapes quotes within interpolated code.
+  _.template = function(text, data, settings) {
+    var render;
+    settings = _.defaults({}, settings, _.templateSettings);
+
+    // Combine delimiters into one regular expression via alternation.
+    var matcher = new RegExp([
+      (settings.escape || noMatch).source,
+      (settings.interpolate || noMatch).source,
+      (settings.evaluate || noMatch).source
+    ].join('|') + '|$', 'g');
+
+    // Compile the template source, escaping string literals appropriately.
+    var index = 0;
+    var source = "__p+='";
+    text.replace(matcher, function(match, escape, interpolate, evaluate, offset) {
+      source += text.slice(index, offset)
+        .replace(escaper, function(match) { return '\\' + escapes[match]; });
+
+      if (escape) {
+        source += "'+\n((__t=(" + escape + "))==null?'':_.escape(__t))+\n'";
+      }
+      if (interpolate) {
+        source += "'+\n((__t=(" + interpolate + "))==null?'':__t)+\n'";
+      }
+      if (evaluate) {
+        source += "';\n" + evaluate + "\n__p+='";
+      }
+      index = offset + match.length;
+      return match;
+    });
+    source += "';\n";
+
+    // If a variable is not specified, place data values in local scope.
+    if (!settings.variable) source = 'with(obj||{}){\n' + source + '}\n';
+
+    source = "var __t,__p='',__j=Array.prototype.join," +
+      "print=function(){__p+=__j.call(arguments,'');};\n" +
+      source + "return __p;\n";
+
+    try {
+      render = new Function(settings.variable || 'obj', '_', source);
+    } catch (e) {
+      e.source = source;
+      throw e;
+    }
+
+    if (data) return render(data, _);
+    var template = function(data) {
+      return render.call(this, data, _);
+    };
+
+    // Provide the compiled function source as a convenience for precompilation.
+    template.source = 'function(' + (settings.variable || 'obj') + '){\n' + source + '}';
+
+    return template;
+  };
+
+  // Add a "chain" function, which will delegate to the wrapper.
+  _.chain = function(obj) {
+    return _(obj).chain();
+  };
+
+  // OOP
+  // ---------------
+  // If Underscore is called as a function, it returns a wrapped object that
+  // can be used OO-style. This wrapper holds altered versions of all the
+  // underscore functions. Wrapped objects may be chained.
+
+  // Helper function to continue chaining intermediate results.
+  var result = function(obj) {
+    return this._chain ? _(obj).chain() : obj;
+  };
+
+  // Add all of the Underscore functions to the wrapper object.
+  _.mixin(_);
+
+  // Add all mutator Array functions to the wrapper.
+  each(['pop', 'push', 'reverse', 'shift', 'sort', 'splice', 'unshift'], function(name) {
+    var method = ArrayProto[name];
+    _.prototype[name] = function() {
+      var obj = this._wrapped;
+      method.apply(obj, arguments);
+      if ((name == 'shift' || name == 'splice') && obj.length === 0) delete obj[0];
+      return result.call(this, obj);
+    };
+  });
+
+  // Add all accessor Array functions to the wrapper.
+  each(['concat', 'join', 'slice'], function(name) {
+    var method = ArrayProto[name];
+    _.prototype[name] = function() {
+      return result.call(this, method.apply(this._wrapped, arguments));
+    };
+  });
+
+  _.extend(_.prototype, {
+
+    // Start chaining a wrapped Underscore object.
+    chain: function() {
+      this._chain = true;
+      return this;
+    },
+
+    // Extracts the result from a wrapped and chained object.
+    value: function() {
+      return this._wrapped;
+    }
+
+  });
+
+  // AMD registration happens at the end for compatibility with AMD loaders
+  // that may not enforce next-turn semantics on modules. Even though general
+  // practice for AMD registration is to be anonymous, underscore registers
+  // as a named module because, like jQuery, it is a base library that is
+  // popular enough to be bundled in a third party lib, but not be part of
+  // an AMD load request. Those cases could generate an error when an
+  // anonymous define() is called outside of a loader request.
+  if (typeof define === 'function' && define.amd) {
+    define('underscore', [], function() {
+      return _;
+    });
+  }
+}).call(this);
+
+},{}],4:[function(require,module,exports){
+(function(){
+    var root = this;
+    var create;
+    var Character = require('./systems/battle/character.js');
+    var Monster = require('./systems/battle/monster.js');
+    function Create(){
+        if(create) return create;
+        create = {};
+        create.Monster = function(name){
+            var ret = new Monster({name : name});
+            return ret;
+        };
+        return create;
+    }
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = Create;
+        root.Create = Create;
+    }else{
+        root.Create = Create;
+    }
+}());
+},{"./systems/battle/character.js":10,"./systems/battle/monster.js":12}],5:[function(require,module,exports){
+(function(){
+    var root = this;
+    var config = {};
+    config.battle = {
+        armorMultiplier : 0.04,
+        magicResMultiplier : 0.06,
+        elementalResMultiplier : 0.015,
+        maxSpeed : 100
+    };
+    
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = config;
+        root.config = config;
+    }else{
+        root.config = config;
+    }
+}());
+},{}],6:[function(require,module,exports){
+(function () {
+    var root = this;
+    var constants = {};
+    constants.damageTypes = {
+        physical: 'physical',
+        magical: 'magical',
+        pure: 'pure',
+        hpRemoval: 'hpRemoval',
+        manaRemoval: 'manaRemoval'
+    };
+    constants.elements = {
+        neutral: 'neutral',
+        fire: 'fire',
+        ice: 'ice',
+        water: 'water',
+        elec: 'electric',
+        light: 'light',
+        dark: 'dark',
+        earth: 'earth',
+        wind: 'wind'
+    };
+
+    constants.stats = {
+        fireRes: "Fire Res",
+        iceRes: "Ice Res",
+        elecRes: "Elec Res",
+        waterRes: "Water Res",
+        earthRes: "Earth Res",
+        windRes: "Wind Res",
+        lightRes: "Light Res",
+        darkRes: "Dark Res",
+        str: "Str",
+        dex: "Dex",
+        int: "Int",
+        luk: "Luk",
+        magicalPower : "Magical Power",
+        physicalPower : "Physical Power",
+        health: "Health",
+        mana: "Mana",
+        healthRegen: "Health Regen",
+        manaRegen: "Mana Regen",
+        speed: "Speed",
+        speedGain: "Speed Gain",
+        penetration: {
+            percent: {
+                armor: "Percent Armor Penetration",
+                magic: "Percent Magic Penetration",
+                fire: "Percent Fire Penetration",
+                ice: "Percent Ice Penetration",
+                water:"Percent Water Penetration",
+                elec: "Percent Electrical Penetration",
+                earth: "Percent Earth Penetration",
+                wind: "Percent Wind Penetration",
+                light: "Percent Light Penetration",
+                dark: "Percent Dark Penetration"
+            },
+            flat: {
+                armor: "Flat Armor Penetration",
+                magic: "Flat Magic Penetration",
+                fire: "Flat Fire Penetration",
+                ice: "Flat Ice Penetration",
+                water:"Flat Water Penetration",
+                elec: "Flat Electrical Penetration",
+                earth: "Flat Earth Penetration",
+                wind: "Flat Wind Penetration",
+                light: "Flat Light Penetration",
+                dark: "Flat Dark Penetration"
+            }
+        }
+    };
+
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = constants;
+        root.constants = constants;
+    }else{
+        root.constants = constants;
+    }
+}());
+},{}],7:[function(require,module,exports){
+(function(){
+    var root = this;
+    var $ = require('jQuery');
+    var backbone = require('backbone');
+    var _ = require('underscore');
+    var config = require('./etc/config.js');
+    var Character = require('./systems/battle/character.js');
+    var Battle = require('./systems/battle/battle.js');
+    var modApi = require('./systems/mod/modapi.js');
+    var hook = require('./systems/battle/hook.js');
+    var Create = require('./create.js');
+    var Location = require('./systems/map/location.js');
+    var events = require('./systems/map/events.js');
+    //var User = require('./user.js);
+    
+    var Game = {};
+    Game.systems = {};
+    Game.timer = {
+        elapsed : 1,
+        lastTime : 1
+    };
+    Game.global = {
+        _ : _,
+        backbone : backbone,
+        modApi : modApi
+    };
+    Game.global.events = {};
+    _.extend(Game.global.events,hook);
+    Game.init = function(){
+        Game.activePlayer = new Character({},this);
+        Game.timer.lastTime = Date.now();
+        Game.loop();
+        Game.systems.battle = Battle(this);
+        Game.create = Create(this);
+    };
+    
+    Game.update = function(){
+        _.each(Game.systems,function(v,k){
+            v.update();
+        });
+    };
+    Game.render = function(){
+        _.each(Game.systems,function(v,k){
+            v.render(Game.activePlayer);
+        });
+    };
+    Game.loop = function(){
+        Game.timer.elapsed = (Date.now() - Game.timer.lastTime) / 1000;
+        Game.update();
+        Game.render();
+        //Game.render();
+        Game.timeout = setTimeout(Game.loop,1000/config.fps);
+        Game.timer.lastTime = Date.now();
+    };
+    Game.global.version = "0.0.2";
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = Game;
+        root.Game = Game;
+    }else{
+        root.Game = Game;
+    }
+}());
+},{"./create.js":4,"./etc/config.js":5,"./systems/battle/battle.js":8,"./systems/battle/character.js":10,"./systems/battle/hook.js":11,"./systems/map/events.js":14,"./systems/map/location.js":15,"./systems/mod/modapi.js":16,"backbone":1,"jQuery":2,"underscore":3}],8:[function(require,module,exports){
+(function () {
+    var _ = require('underscore');
+    var $ = require('jQuery');
+    var root = this;
+
+    function Battle(Game) {
+        this.log = [];
+        this.fighterA;
+        this.fighterB;
+        this.Game = Game;
+        this.active = false;
+        this.ui = {};
+        this.init();
+    }
+    Battle.version = "0.0.1";
+    Battle.prototype.init = function () {
+        this.Game.global.events.trigger('battle:systemInit');
+        //this.initUi();
+    };
+    Battle.prototype.initUi = function () {
+        this.ui.player = {};
+        var base = this.ui.player.playerBase = $("#player-battle-stats");
+        this.ui.player.stats = {
+            health: {
+                $name: base.find(".health .name"),
+                $value: base.find(".health .value")
+            },
+            mana: {
+                $name: base.find(".mana .name"),
+                $value: base.find(".mana .value")
+            },
+            str: {
+                $name: base.find(".str .name"),
+                $value: base.find(".str .value")
+            },
+            dex: {
+                $name: base.find(".dex .name"),
+                $value: base.find(".dex .value")
+            },
+            int: {
+                $name: base.find(".int .name"),
+                $value: base.find(".int .value")
+            },
+            speed: {
+                $name: base.find(".speed .name"),
+                $value: base.find(".speed .value")
+            },
+            armor: {
+                $name: base.find(".armor .name"),
+                $value: base.find(".armor .value")
+            },
+            magicRes: {
+                $name: base.find(".magic-res .name"),
+                $value: base.find(".magic-res .value")
+            },
+            fireRes: {
+                $name: base.find(".fire-res .name"),
+                $value: base.find(".fire-res .value")
+            },
+            iceRes: {
+                $name: base.find(".ice-res .name"),
+                $value: base.find(".ice-res .value")
+            },
+            waterRes: {
+                $name: base.find(".water-res .name"),
+                $value: base.find(".water-res .value")
+            },
+            elecRes: {
+                $name: base.find(".elec-res .name"),
+                $value: base.find(".elec-res .value")
+            },
+            earthRes: {
+                $name: base.find(".earth-res .name"),
+                $value: base.find(".earth-res .value")
+            },
+            windRes: {
+                $name: base.find(".wind-res .name"),
+                $value: base.find(".wind-res .value")
+            },
+            lightRes: {
+                $name: base.find(".light-res .name"),
+                $value: base.find(".light-res .value")
+            },
+            darkRes: {
+                $name: base.find(".dark-res .name"),
+                $value: base.find(".dark-res .value")
+            }
+        };
+        this.ui.enemy = {};
+        base = this.ui.enemy.base = $("#enemy-battle-stats");
+        this.ui.enemy.stats = {
+            health: {
+                $name: base.find(".health .name"),
+                $value: base.find(".health .value")
+            },
+            mana: {
+                $name: base.find(".mana .name"),
+                $value: base.find(".mana .value")
+            },
+            str: {
+                $name: base.find(".str .name"),
+                $value: base.find(".str .value")
+            },
+            dex: {
+                $name: base.find(".dex .name"),
+                $value: base.find(".dex .value")
+            },
+            int: {
+                $name: base.find(".int .name"),
+                $value: base.find(".int .value")
+            },
+            speed: {
+                $name: base.find(".speed .name"),
+                $value: base.find(".speed .value")
+            },
+            armor: {
+                $name: base.find(".armor .name"),
+                $value: base.find(".armor .value")
+            },
+            magicRes: {
+                $name: base.find(".magic-res .name"),
+                $value: base.find(".magic-res .value")
+            },
+            fireRes: {
+                $name: base.find(".fire-res .name"),
+                $value: base.find(".fire-res .value")
+            },
+            iceRes: {
+                $name: base.find(".ice-res .name"),
+                $value: base.find(".ice-res .value")
+            },
+            waterRes: {
+                $name: base.find(".water-res .name"),
+                $value: base.find(".water-res .value")
+            },
+            elecRes: {
+                $name: base.find(".elec-res .name"),
+                $value: base.find(".elec-res .value")
+            },
+            earthRes: {
+                $name: base.find(".earth-res .name"),
+                $value: base.find(".earth-res .value")
+            },
+            windRes: {
+                $name: base.find(".wind-res .name"),
+                $value: base.find(".wind-res .value")
+            },
+            lightRes: {
+                $name: base.find(".light-res .name"),
+                $value: base.find(".light-res .value")
+            },
+            darkRes: {
+                $name: base.find(".dark-res .name"),
+                $value: base.find(".dark-res .value")
+            }
+        };
+        base = null;
+    };
+
+    Battle.prototype.update = function () {
+        if (!this.active) return;
+        var fasg = this.fighterA.stats.speedGain.getTotal() * this.Game.timer.elapsed;
+        // I originally was going to abbrivate as FighterAspeedGain but that seemed like a bad idea.
+        var fbsg = this.fighterA.stats.speedGain.getTotal() * this.Game.timer.elapsed;
+        this.fighterA.stats.speed.increase(fasg);
+        this.fighterB.stats.speed.increase(fbsg);
+
+        if (this.fighterA.stats.speed.isMax()) {
+            this.actionQueue.push([this.fighterA, this.fighterB]);
+        }
+
+        if (this.fighterB.stats.speed.isMax()) {
+            if (this.actionQueue.length > 0 && (this.fighterA.stats.speed.max() - fasg) < (this.fighterB.stats.speed.max() - fbsg)) {
+                this.actionQueue.push([this.fighterB, this.fighterA]);
+            } else {
+                this.actionQueue.unshift([this.fighterB, this.fighterA]);
+            }
+        }
+
+        if (this.actionQueue.length) {
+            var len = this.actionQueue.length;
+            while (len-- && this.active) {
+                this.actionQueue[len][0].doAction(this.actionQueue[len][1]);
+                this.actionQueue[len][0].stats.speed.baseValue(0);
+                this.actionQueue.pop();
+            }
+        }
+    };
+
+    Battle.prototype.end = function () {
+        this.active = false;
+        return true;
+    };
+
+
+    Battle.prototype.render = function (player, enemy) {
+        player = player || this.fighterA;
+        enemy = enemy || this.fighterB;
+        console.log(player);
+        if (player) {
+            this.ui.player.stats.health.$value.text(player.getStat('health', 'current'));
+        }
+    };
+
+    Battle.prototype.start = function (fighterA, fighterB, conditions) {
+        this.clear();
+        if (!fighterA || !fighterB) return false;
+        this.fighterA = fighterA;
+        this.fighterB = fighterB;
+        this.Game.global.events.trigger('system:battle:start', this);
+        this.active = true;
+        fighterA.stats.speed.baseValue(0);
+        fighterB.stats.speed.baseValue(0);
+        this.update();
+        this.Game.global.events.once("system:character:death", this.end,this);
+        return this.active;
+    };
+
+    Battle.prototype.clear = function () {
+        this.actionQueue = [];
+        this.allCharacters = [];
+    };
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = Battle;
+        root.Battle = Battle;
+    } else {
+        root.Battle = Battle;
+    }
+}());
+},{"jQuery":2,"underscore":3}],9:[function(require,module,exports){
+(function () {
+    var root = this;
+    var _ = require('underscore');
+    var constants = require('../../etc/constants.js');
+    var config = require('../../etc/config.js');
+    
+    
+    /*
+    * Create a new calculator
+    * @param {Character} [user] to reference
+    */
+    function Calculator(user) {
+        this.user = user;
+    }
+    
+    /*
+    * Reduce value by Armor
+    * @param {Number} val The value to reduce
+    * @param {Object} [source] The character doing damage. Will take into account its penetration stats.
+    * @param {Object} [pen] Object containing extra penetration information
+    * @param {Number} [pen.percent.armor | pen.flat.armor] The actual penetration numbers 
+    * @return {Number} The new reduced value, will never be less than 0.
+    */
+    Calculator.prototype.reduceByArmor = function (val, source, pen) {
+        var percentApen = 0,
+            flatApen = 0,
+            armor = this.user.stats.armor.getTotal(),
+            total = val;
+        if (pen) {
+            if(pen.percent) percentApen += pen.percent.armor || 0;
+            if(pen.flat) flatApen += pen.flat.armor || 0;
+        }
+        if (source) {
+            percentApen += source.stats.penetration.percent.armor.getTotal();
+            flatApen += source.stats.penetration.flat.armor.getTotal();
+        }
+        armor -= armor * (percentApen * 0.01);
+        armor -= flatApen;
+        if(armor < 0) armor = 0;
+        total -= total * ( (armor * config.battle.armorMultiplier) * 0.01 );
+        return (total < 0 ? 0 : total);
+    };
+    
+    /*
+    * Reduce value by Magic Resistance
+    * @param {Number} val The value to reduce
+    * @param {Object} [source] The character doing damage. Will take into account its penetration stats.
+    * @param {Object} [pen] Object containing extra penetration information
+    * @param {Number} [pen.percent.magic | pen.flat.magic] The actual penetration numbers 
+    * @return {Number} The new reduced value, will never be less than 0.
+    */
+    Calculator.prototype.reduceByMagicResistance = function (val, source, pen) {
+        var percentMpen = 0,
+            flatMpen = 0,
+            magicRes = this.user.stats.magicRes.getTotal(),
+            total = val;
+        if (source) {
+            percentMpen += source.stats.penetration.percent.magic.getTotal();
+            flatMpen += source.stats.penetration.flat.magic.getTotal();
+        }
+        if (pen) {
+            if(pen.percent) percentMpen += pen.percent.magic || 0;
+            if(pen.flat) flatMpen += pen.flat.magic || 0;
+        }
+        magicRes -= magicRes * (percentMpen * 0.01);
+        magicRes -= flatMpen;
+        if(magicRes < 0) magicRes = 0;
+        total -= total * ((magicRes * config.battle.magicResMultiplier)* 0.01);
+        return (total < 0 ? 0 : total);
+    };
+    
+    /*
+    * Reduce value by Elemental  Resistance
+    * @param {String} el The element
+    * @param {Number} val The value to reduce
+    * @param {Object} [source] The character doing damage. Will take into account its penetration stats.
+    * @param {Object} [pen] Object containing extra penetration information
+    * @param {Number} [pen.percent.element | pen.flat.element] The actual penetration numbers 
+    * @return {Number} The new reduced value, will never be less than 0.
+    */
+    Calculator.prototype.reduceByElementalResistance = function (el, val, source, pen) {
+        var percentResPen = 0,
+            flatResPen = 0,
+            res = this.user.stats.resistances[el].getTotal(),
+            total = val;
+        if (source) {
+            percentResPen += source.stats.penetration.percent[el].getTotal();
+            flatResPen += source.stats.penetration.flat[el].getTotal();
+        }
+        if (pen) {
+            if(pen.percent) percentResPen = pen.percent[el] || 0;
+            if(pen.flat) flatResPen = pen.flat[el] || 0;
+        }
+        res -= res * (percentResPen * 0.01);
+        res -= flatResPen;
+        if(res < 0) res = 0;
+        total -= total * ((res * config.battle.elementalResMultiplier) * 0.01);
+        return (total < 0 ? 0 : total);
+    };
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = Calculator;
+        root.Calculator = Calculator;
+    }else{
+        root.Calculator = Calculator;
+    }
+
+}());
+},{"../../etc/config.js":5,"../../etc/constants.js":6,"underscore":3}],10:[function(require,module,exports){
+(function () {
+    var root = this;
+    var _ = require('underscore');
+    var utils = require('../../utils.js');
+    var constants = require('../../etc/constants.js');
+    var config = require('../../etc/config.js');
+    var Calculator = require('./calculator.js');
+    var Stat = require('./stat.js');
+
+    function Character(data,name, Game) {
+        var stats = Character.prototype.getDefaultStats();
+        this.calculator = new Calculator(this);
+        this.isAi = true;
+        if (_.isObject(data)) {
+            utils.objOverride(stats, data);
+        }
+        this.convertToStatObj(stats);
+        this.stats = stats;
+        this.equipped = {
+            head: null,
+            top: null,
+            leftHand: null,
+            rightHand: null,
+            feet: null,
+            bottom: null,
+            accessory: null
+        };
+        this.inventory = [];
+        this.skills = [];
+        this.battleRating = 0;
+        if(_.isObject(name)){
+            this.Game = name;
+            this.name = "Default name";
+        }else{
+            this.Game = Game;
+            this.name = name;
+        }
+    }
+    
+    Character.prototype.convertToStatObj = function(stats){
+        stats.health = new Stat(constants.stats.health,stats.health,stats.health,0);
+        stats.level = new Stat(constants.stats.level, stats.level, config.maxLevel);
+        stats.armor = new Stat(constants.stats.armor,stats.armor);
+        stats.magicRes = new Stat(constants.stats.magicRes,stats.magicRes);
+        stats.mana = new Stat(constants.stats.mana, stats.mana);
+        stats.healthRegen = new Stat(constants.stats.healthRegen, stats.healthRegen);
+        stats.manaRegen = new Stat(constants.stats.manaRegen, stats.manaRegen);
+        stats.physicalPower = new Stat(constants.stats.physicalPower, stats.physicalPower);
+        stats.magicalPower = new Stat(constants.stats.magicalPower, stats.magicalPower);
+        
+        stats.str = new Stat(constants.stats.str, stats.str);
+        stats.int = new Stat(constants.stats.int, stats.int);
+        stats.dex = new Stat(constants.stats.dex, stats.dex);
+        stats.luk = new Stat(constants.stats.luk, stats.luk);
+        
+        stats.resistances.fire = new Stat(constants.stats.fireRes, stats.resistances.fire);
+        stats.resistances.ice = new Stat(constants.stats.iceRes, stats.resistances.ice);
+        stats.resistances.elec = new Stat(constants.stats.elecRes, stats.resistances.elec);
+        stats.resistances.water = new Stat(constants.stats.waterRes, stats.resistances.water);
+        stats.resistances.earth = new Stat(constants.stats.earthRes, stats.resistances.earth);
+        stats.resistances.wind = new Stat(constants.stats.windRes, stats.resistances.wind);
+        stats.resistances.light = new Stat(constants.stats.lightRes, stats.resistances.light);
+        stats.resistances.dark = new Stat(constants.stats.darkRes, stats.resistances.dark);
+        
+        stats.speedGain = new Stat(constants.stats.speedGain, stats.speedGain);
+        stats.speed = new Stat(constants.stats.speed, stats.speed, config.battle.maxSpeed);
+        
+        stats.penetration.flat.fire = new Stat(constants.stats.penetration.flat.fire, stats.penetration.flat.fire);
+        stats.penetration.flat.ice = new Stat(constants.stats.penetration.flat.ice, stats.penetration.flat.ice);
+        stats.penetration.flat.elec = new Stat(constants.stats.penetration.flat.elec, stats.penetration.flat.elec);
+        stats.penetration.flat.water = new Stat(constants.stats.penetration.flat.water, stats.penetration.flat.water);
+        stats.penetration.flat.earth = new Stat(constants.stats.penetration.flat.earth, stats.penetration.flat.earth);
+        stats.penetration.flat.wind = new Stat(constants.stats.penetration.flat.wind, stats.penetration.flat.wind);
+        stats.penetration.flat.light = new Stat(constants.stats.penetration.flat.light, stats.penetration.flat.light);
+        stats.penetration.flat.dark = new Stat(constants.stats.penetration.flat.dark, stats.penetration.flat.dark);
+        stats.penetration.flat.armor = new Stat(constants.stats.penetration.flat.armor, stats.penetration.flat.armor);
+        stats.penetration.flat.magic = new Stat(constants.stats.penetration.flat.magic, stats.penetration.flat.magic);
+        
+        stats.penetration.percent.fire = new Stat(constants.stats.penetration.percent.fire, stats.penetration.percent.fire);
+        stats.penetration.percent.ice = new Stat(constants.stats.penetration.percent.ice, stats.penetration.percent.ice);
+        stats.penetration.percent.elec = new Stat(constants.stats.penetration.percent.elec, stats.penetration.percent.elec);
+        stats.penetration.percent.water = new Stat(constants.stats.penetration.percent.water, stats.penetration.percent.water);
+        stats.penetration.percent.earth = new Stat(constants.stats.penetration.percent.earth, stats.penetration.percent.earth);
+        stats.penetration.percent.wind = new Stat(constants.stats.penetration.percent.wind, stats.penetration.percent.wind);
+        stats.penetration.percent.light = new Stat(constants.stats.penetration.percent.light, stats.penetration.percent.light);
+        stats.penetration.percent.dark = new Stat(constants.stats.penetration.percent.dark, stats.penetration.percent.dark);
+        stats.penetration.percent.armor = new Stat(constants.stats.penetration.percent.armor, stats.penetration.percent.armor);
+        stats.penetration.percent.magic = new Stat(constants.stats.penetration.percent.magic, stats.penetration.percent.magic);
+        
+
+    };
+
+    Character.prototype.doAction = function (target) {
+        if (this.isAi) {
+            return this.aiAction(target);
+        }
+    };
+
+    Character.prototype.aiAction = function (target) {
+        this.useSkill(this.basicAttack(), target);
+    };
+
+    Character.prototype.useSkill = function (skill, target) {
+        if (!skill.cost(this, target)) return false;
+        this.Game.global.events.trigger('system:battle:cast:skill', skill, this, target);
+        skill.use(this, target);
+    };
+
+    Character.prototype.basicAttack = function () {
+        if (this.basicAttackSkill) return this.basicAttackSkill;
+        var damage;
+        var skill = {
+            name: 'Basic Attack'
+        };
+        damage = {
+            type: constants.damageTypes.physical,
+            beforeRes: 0
+        };
+        skill.use = function (user, target) {
+            damage.beforeRes = user.stats.physicalPower.getTotal() + (user.stats.str.getTotal() * 0.65);
+            return target.applyDamage({
+                skill: this,
+                user: user,
+                target: target
+            }, damage);
+        };
+        skill.cost = function () {
+            return true;
+        };
+        this.basicAttackSkill = skill;
+        return skill;
+    };
+
+    // damage = {type : physical, el : fire, beforeRes : 10, afterRes : 10, callback : f(dealt,battleIngo,damge)}
+    //source = {skill : skill, user : user, target : target}
+
+    /**
+     * Applys damage to the character(itself not the supplied source)
+     * @param {Object} source Contains refrences to the damage source.
+     * @param {Object} source.skill The skill being used
+     * @param {Character} source.user The user or owner
+     * @param {Character} source.target The target
+     * @param {Object} damage The damage object
+     * @param {String} damage.type The type of damage
+     * @param [String] damage.element The element of the damage
+     * @param {function|number} damage.beforeRes The damage before resistences are applied
+     * @param {function|number} damage.afterRes The damage after resistances are applied
+     * @param [function] damage.callback A callback that is invoked after damage is calculated but before its applied.
+     * @return {Number} The damage dealth
+     */
+    Character.prototype.applyDamage = function (source, damage) {
+        var i,
+            d,
+            el,
+            total = 0;
+        el = damage.element || constants.elements.neutral;
+        if (!damage.pure && damage.type === constants.damageTypes.physical) {
+            if (el === constants.elements.neutral) {
+                total = this.calculator.reduceByArmor(damage.beforeRes, source.user, damage.penObj);
+            } else {
+                total = this.calculator.reduceByElementalResistance(
+                    el,
+                    this.calculator.calculateArmorReduction(damage.beforeRes, damage.penObj),
+                    source.user,
+                    damage.penObj
+                );
+            }
+        } else if (!damage.pure && damage.type === constants.damageTypes.magical) {
+            if (el === constants.elements.neutral) {
+                total = this.calculator.reduceByMagicResistance(damage.beforeRes, source.user, damage);
+            } else {
+                total = this.calculator.reduceByElementalResistance(
+                    el,
+                    this.calculator.reduceByMagicResistance(damage.beforeRes, source.user, damage.penObj),
+                    source.user,
+                    damage.penObj
+                );
+            }
+        } else {
+            total += damage.beforeRes;
+        }
+        total += damage.afterRes ? damage.afterRes(source) : 0;
+        this.takeDamage(total, damage.type, el, damage.isPure);
+        if (damage.callback) damage.callback(total, damage, source);
+        return total;
+    };
+
+    Character.prototype.takeDamage = function (val, type, el, pure) {
+        this.changeHealth(-val);
+        this.Game.global.events.trigger('system:battle:takenDamage:', val, type, el, pure);
+    };
+
+    Character.prototype.changeHealth = function (val) {
+        this.stats.health.change(val);
+        if (this.stats.health.baseValue() < 1) {
+            this.Game.global.events.trigger('system:character:death', this);
+        }
+    };
+
+    Character.prototype.getDefaultStats = function () {
+        var max = 5;
+        var sRand = _.random(0, max);
+        var iRand = _.random(0, max);
+        var lRand = _.random(0, max);
+        var dRand = _.random(0, max);
+        return {
+            level: 1,
+            health: 20,
+            mana: 6,
+            str: 5,
+            int: 5,
+            dex: 5,
+            luk: 5,
+            armor: 1,
+            physicalPower: 0,
+            magicalPower: 0,
+            magicRes: 0.2,
+            speed: 50,
+            speedGain: 100,
+            healthRegen: 0.2, // Internally represented as per second but displayed as per 5 to the player
+            manaRegen: 0.125,
+
+            resistances : {
+                fire: 0,
+                ice: 0,
+                water: 0,
+                elec: 0,
+                earth: 0,
+                wind: 0,
+                light: 0,
+                dark: 0,
+            },
+
+            penetration: {
+                percent: {
+                    armor: 0,
+                    magic: 0,
+                    fire: 0,
+                    ice: 0,
+                    water: 0,
+                    elec: 0,
+                    earth: 0,
+                    wind: 0,
+                    light: 0,
+                    dark: 0
+                },
+                flat: {
+                    armor: 0,
+                    magic: 0,
+                    fire: 0,
+                    ice: 0,
+                    water: 0,
+                    elec: 0,
+                    earth: 0,
+                    wind: 0,
+                    light: 0,
+                    dark: 0
+                }
+            }
+        };
+    };
+
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = Character;
+        root.Character = Character;
+    }else{
+        root.Character = Character;
+    }
+}());
+},{"../../etc/config.js":5,"../../etc/constants.js":6,"../../utils.js":17,"./calculator.js":9,"./stat.js":13,"underscore":3}],11:[function(require,module,exports){
+(function () {
+    var root = this;
+    var _ = require('underscore');
+    var pEvents = {};
+    // Regular expression used to split event strings.
+    var eventSplitter = /\s+/;
+
+    // Implement fancy features of the Events API such as multiple event
+    // names `"change blur"` and jQuery-style event maps `{change: action}`
+    // in terms of the existing API.
+    var eventsApi = function (obj, action, name, rest) {
+        if (!name) return true;
+
+        // Handle event maps.
+        if (typeof name === 'object') {
+            for (var key in name) {
+                obj[action].apply(obj, [key, name[key]].concat(rest));
+            }
+            return false;
+        }
+
+        // Handle space separated event names.
+        if (eventSplitter.test(name)) {
+            var names = name.split(eventSplitter);
+            for (var i = 0, length = names.length; i < length; i++) {
+                obj[action].apply(obj, [names[i]].concat(rest));
+            }
+            return false;
+        }
+
+        return true;
+    };
+    // A difficult-to-believe, but optimized internal dispatch function for
+    // triggering events. Tries to keep the usual cases speedy (most internal
+    // Backbone events have 3 arguments).
+    var triggerEvents = function (events, args) {
+        var ev, i = -1,
+            l = events.length,
+            a1 = args[0],
+            a2 = args[1],
+            a3 = args[2];
+        switch (args.length) {
+        case 0:
+            while (++i < l)(ev = events[i]).callback.call(ev.ctx);
+            return;
+        case 1:
+            while (++i < l)(ev = events[i]).callback.call(ev.ctx, a1);
+            return;
+        case 2:
+            while (++i < l)(ev = events[i]).callback.call(ev.ctx, a1, a2);
+            return;
+        case 3:
+            while (++i < l)(ev = events[i]).callback.call(ev.ctx, a1, a2, a3);
+            return;
+        default:
+            while (++i < l)(ev = events[i]).callback.apply(ev.ctx, args);
+            return;
+        }
+    };
+    var Events = {
+
+        // Bind an event to a `callback` function. Passing `"all"` will bind
+        // the callback to all events fired.
+        on: function (name, callback, context, priority) {
+            if (!eventsApi(this, 'on', name, [callback, context]) || !callback) return this;
+            this._events || (this._events = {});
+            var events = this._events[name] || (this._events[name] = []);
+            events.push({
+                callback: callback,
+                context: context,
+                ctx: context || this,
+                priority : priority
+            });
+            if(null == priority) priority = 500;
+            events.sort(function(a,b){return a.priority-b.priority;});
+            return this;
+        },
+
+        // Bind an event to only be triggered a single time. After the first time
+        // the callback is invoked, it will be removed.
+        once: function (name, callback, context) {
+            if (!eventsApi(this, 'once', name, [callback, context]) || !callback) return this;
+            var self = this;
+            var once = _.once(function () {
+                self.off(name, once);
+                callback.apply(this, arguments);
+            });
+            once._callback = callback;
+            return this.on(name, once, context);
+        },
+
+        // Remove one or many callbacks. If `context` is null, removes all
+        // callbacks with that function. If `callback` is null, removes all
+        // callbacks for the event. If `name` is null, removes all bound
+        // callbacks for all events.
+        off: function (name, callback, context) {
+            if (!this._events || !eventsApi(this, 'off', name, [callback, context])) return this;
+
+            // Remove all callbacks for all events.
+            if (!name && !callback && !context) {
+                this._events = void 0;
+                return this;
+            }
+
+            var names = name ? [name] : _.keys(this._events);
+            for (var i = 0, length = names.length; i < length; i++) {
+                name = names[i];
+
+                // Bail out if there are no events stored.
+                var events = this._events[name];
+                if (!events) continue;
+
+                // Remove all callbacks for this event.
+                if (!callback && !context) {
+                    delete this._events[name];
+                    continue;
+                }
+
+                // Find any remaining events.
+                var remaining = [];
+                for (var j = 0, k = events.length; j < k; j++) {
+                    var event = events[j];
+                    if (
+                        callback && callback !== event.callback &&
+                        callback !== event.callback._callback ||
+                        context && context !== event.context
+                    ) {
+                        remaining.push(event);
+                    }
+                }
+
+                // Replace events if there are any remaining.  Otherwise, clean up.
+                if (remaining.length) {
+                    this._events[name] = remaining;
+                } else {
+                    delete this._events[name];
+                }
+            }
+
+            return this;
+        },
+
+        // Trigger one or many events, firing all bound callbacks. Callbacks are
+        // passed the same arguments as `trigger` is, apart from the event name
+        // (unless you're listening on `"all"`, which will cause your callback to
+        // receive the true name of the event as the first argument).
+        trigger: function (name) {
+            if (!this._events) return this;
+            var args = Array.prototype.slice.call(arguments, 1);
+            if (!eventsApi(this, 'trigger', name, args)) return this;
+            var events = this._events[name];
+            var allEvents = this._events.all;
+            if (events) triggerEvents(events, args);
+            if (allEvents) triggerEvents(allEvents, arguments);
+            return this;
+        },
+
+        // Tell this object to stop listening to either specific events ... or
+        // to every object it's currently listening to.
+        stopListening: function (obj, name, callback) {
+            var listeningTo = this._listeningTo;
+            if (!listeningTo) return this;
+            var remove = !name && !callback;
+            if (!callback && typeof name === 'object') callback = this;
+            if (obj)(listeningTo = {})[obj._listenId] = obj;
+            for (var id in listeningTo) {
+                obj = listeningTo[id];
+                obj.off(name, callback, this);
+                if (remove || _.isEmpty(obj._events)) delete this._listeningTo[id];
+            }
+            return this;
+        }
+
+    };
+    var listenMethods = {
+        listenTo: 'on',
+        listenToOnce: 'once'
+    };
+
+    // Inversion-of-control versions of `on` and `once`. Tell *this* object to
+    // listen to an event in another object ... keeping track of what it's
+    // listening to.
+    _.each(listenMethods, function (implementation, method) {
+        Events[method] = function (obj, name, callback) {
+            var listeningTo = this._listeningTo || (this._listeningTo = {});
+            var id = obj._listenId || (obj._listenId = _.uniqueId('l'));
+            listeningTo[id] = obj;
+            if (!callback && typeof name === 'object') callback = this;
+            obj[implementation](name, callback, this);
+            return this;
+        };
+    });
+
+    // Aliases for backwards compatibility.
+    Events.bind = Events.on;
+    Events.unbind = Events.off;
+    pEvents = _.extend(pEvents,Events);
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = pEvents;
+        root.Hook = pEvents;
+    }else{
+        root.Hook = pEvents;
+    }
+}());
+},{"underscore":3}],12:[function(require,module,exports){
+(function(){
+    var root = this;
+    var Character = require('./character.js');
+    
+    function Monster(){
+        Character.apply(this,arguments);
+    }
+    
+    Monster.prototype = Character.prototype;
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = Monster;
+        root.Monster = Monster;
+    }else{
+        root.Monster = Monster;
+    }
+}());
+},{"./character.js":10}],13:[function(require,module,exports){
+(function(){
+    var root = this;
+    var _ = require('underscore');
+    function Stat(name,val,max,min){
+        this.modifiers = [];
+        this._baseValue = val || 0;
+        this._max;
+        this._min;
+        if(max != null) this._max = max;
+        if(min != null) this._min = min;
+    }
+    
+    Stat.prototype.increase = function(val){
+        this._baseValue += val;
+        this.clamp();
+        return this._baseValue;
+    };
+    
+    Stat.prototype.decrease = function(val){
+        this._baseValue -= val;
+        this.clamp();
+        return this._baseValue;
+    };
+    
+    Stat.prototype.change = function(val){
+        return val > 0 ? this.increase(val) : this.decrease(-val);
+    };
+    
+    Stat.prototype.baseValue = function(val,set){
+        if(set) this._baseValue = val;
+        else if(val !== undefined) this._baseValue += val;
+        this.clamp();
+        return this._baseValue;
+    };
+    
+    Stat.prototype.max = function(val,set){
+        if(set || this._max === undefined) this._max = val;
+        else if(val) this._max += val;
+        this.clamp();
+        return this._max;
+    };
+    
+    Stat.prototype.isMax = function(val){
+        return this._max != null ? (this._baseValue === this._max) : false;
+    };
+    
+    Stat.prototype.min = function(val,set){
+        if(set || this._min === undefined) this._min = val;
+        else if(val) this._min += val;
+        this.clamp();
+        return this._min;
+    };
+    
+    Stat.prototype.isMin = function(val){
+        return this._min != null ? (this._baseValue === this._min) : false;
+    };
+    
+    Stat.prototype.clamp = function(){
+        if( this._max != null && this._baseValue > this._max) this._baseValue = this._max;
+        if(this._min != null && this._baseValue < this._min) this._baseValue = this._min;
+    };
+    
+    Stat.prototype.isGreaterThan = function(stat,useTotal){
+        if(useTotal){
+            return this.getTotal() > stat.getTotal();
+        }
+        return this._baseValue > stat._baseValue;
+    };
+    
+    Stat.prototype.isLessThan = function(stat,useTotal){
+        if(useTotal){
+            return this.getTotal() < stat.getTotal();
+        }
+        return this._baseValue < stat._baseValue;
+    };
+    
+    Stat.prototype.isEqualTo = function(stat,fuzzy,useTotal){
+        if(useTotal){
+            return fuzzy ? Math.floor(this.getTotal()) === Math.floor(stat.getTotal()) : this.getTotal() === stat.getTotal();
+        }
+        return fuzzy ? Math.floor(this._baseValue) ===  Math.floor(stat._baseValue) : this._baseValue === stat._baseValue;
+    };
+    
+    Stat.prototype.add = function(stat, useTotal){
+        if(useTotal) return this.getTotal() + stat.getTotal();
+        return this.baseValue() + stat.baseValue();
+    };
+    
+    Stat.prototype.subtract = function(stat, useTotal){
+        if(useTotal) return this.getTotal() - stat.getTotal();
+        return this.baseValue() - stat.baseValue();
+    };
+    
+    Stat.prototype.multiply = function(stat, useTotal){
+        if(useTotal) return this.getTotal() * stat.getTotal();
+        return this.baseValue() * stat.baseValue();
+    };
+    
+    Stat.prototype.divide = function(stat, useTotal){
+        var st;
+        if(useTotal) {
+            st = stat.getTotal();
+            return this.getTotal() / (st > 0 ? st : 1 );
+        }
+        st = stat.baseValue();
+        return this.baseValue() / (st > 0 ? st : 1 );
+    };
+    
+    /*
+    * Add a modifier with a Flat or Percent Value value
+    * @param {String} type The type of modifier, flat or percentage
+    * @param {number|function} [value] Value to add. If its a function it will passed the stat object and owner. Functions are always calculated last
+    * @param {boolean} [before] Add the value after the main calculations. Default runs with the main calculations
+    * @return {object} The modifer object. Set destroy value when want to remove
+    */
+    Stat.prototype.addModifer = function(type,value,after){
+        var m = {
+            type : type,
+            value : value,
+            after : after || false,
+            destroy : false
+        };
+        if(_.isFunction(value) || after){
+            this.modifiers.unshift(m);
+        }else{
+            this.modifiers.push(m);
+        }
+        return m;
+    };
+    
+    Stat.prototype.getTotal = function(){
+        var i,
+            after = [],
+            perValues = 0,
+            t,
+            lv = 0,
+            len,
+            totals = {
+                flatTotal : 0,
+                totalAfterFlat : 0,
+                percentTotal : 0,
+                totalAfterPercent : 0,
+                total : 0
+            };
+        len = this.modifiers.length;
+        while(len--){
+            t = this.modifiers[len];
+            if(!t.destroy){
+                if(!t.after){
+                    if(_.isFunction(t.value)){
+                        totals[t.type+"Total"] += t.value(this);
+                    }else{
+                        totals[t.type+"Total"] += t.value;
+                    }
+                }else{
+                    after.push(t);
+                }
+            }else{
+                this.modifiers.splice(len,1);
+            }
+        }
+        if(after.length > 0){
+            for(i = 0; i < after.length; i++){
+                t = after[i];
+                t.value(this,totals);
+            }
+        }
+        totals.total += this._baseValue + totals.flatTotal;
+        totals.total += totals.total * (totals.percentTotal * 0.01);
+        if(this._min && totals.total < this._min){
+            totals.total = this._min;
+        }else if(this._max && totals.total > this._max){
+            totals.total = this._max;
+        }
+        return totals.total;
+    };
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = Stat;
+        root.Stat = Stat;
+    }else{
+        root.Stat = Stat;
+    }
+    
+}());
+},{"underscore":3}],14:[function(require,module,exports){
+(function(){
+    var root = this;
+    var ex = {};
+    var _ = require('underscore');
+    var utils = require('../../utils.js');
+    var events = {};
+    events.registeredEvents = {};
+    events._oldEvents = {};
+    events.registerEvent = function(name,cb,override){
+        var ret;
+        if(this.registeredEvents[name] && !override){
+            return "Event already registred!";
+        }
+        if(override && this.registeredEvents[name]){
+            events._oldEvents[name] = events._oldEvents[name] || [];
+            events._oldEvents[name].push(this.registeredEvents[name]);
+        }
+        ret = this.registeredEvents[name] = {
+            name : name,
+            callback : cb
+        };
+        return ret;
+    };
+    
+    function SpawnEvent(Game,monster){
+        var m = Game.create.Monster("Dickhead");
+        if(Game.systems.battle.active) return false;
+        Game.systems.battle.start(Game.activePlayer,m);
+        Game.global.events.trigger("system:event:"+this.toString());
+        return m;
+    }
+    SpawnEvent.prototype.toString = function(){return "SpawnEvent";};
+    ex = {
+        Events : events,
+        SpawnEvent : SpawnEvent
+    };
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = ex;
+        root.GameEvents = ex;
+    }else{
+        root.GameEvents = ex;
+    }
+}());
+},{"../../utils.js":17,"underscore":3}],15:[function(require,module,exports){
+(function(){
+    var root = this;
+    var utils = require('../../utils.js');
+    
+    /*
+    * All events for locaction come in the array format of : [Event,TimesCanHappen,Weight]
+    * Search : A 2darray of all possible events.
+    * Event : {
+    *   name : SpawnEvent
+    *   noticeText : You have encountered a {{char.name}}! Prepare for battle!!,
+    *   data : [] For system/predefined events. Will be supplied to as the arguments
+    *   }
+    */
+    function Location(data){
+        this.searchEvents = [[{
+            name : "SpawnEvent",
+            data : ["Derpy"]
+        }, 0, 1]];
+        this.searchWeights = this.getSearchWeights();
+    }
+    
+    Location.prototype.search = function(events){
+        var i = utils.weightedRandom(this.searchWeights);
+        var e = this.searchEvents[i];
+        var theEvent = events.registeredEvents[e.name];
+        if(theEvent){
+            theEvent.callback.apply(theEvent,e.data);
+        }
+    };
+    
+    Location.prototype.getSearchWeights = function(){
+        return this.searchEvents.map(function(e){
+            return e[2];
+        });
+    };
+    
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = Location;
+        root.GameLocation = Location;
+    }else{
+        root.GameLocation = Location;
+    }
+}());
+},{"../../utils.js":17}],16:[function(require,module,exports){
+(function(){
+    var modapi = {};
+    modapi.version = "0.0.1";
+    module.exports = modapi;
+}())
 },{}],17:[function(require,module,exports){
-module.exports=require(15)
-},{}]},{},[4])
+(function(){
+    var _ = require('underscore');
+    var utils = {};
+    var root = this;
+    utils.objOverride = function(to,from,check){
+        _.each(from,function(v,k){
+            if(check && from[k]){
+                if(_.isObject(from[k]) || _.isArray(from[k]) ){
+                    utils.objOverride(to[k],from[k],check);
+                }else{
+                    to[k] = v;
+                }
+            }else{
+                if(_.isObject(from[k]) || _.isArray(from[k])){
+                    utils.objOverride(to[k],from[k],check);
+                }else{
+                    to[k] = v;
+                }
+            }
+        });
+        return to;
+    };
+    //http://codetheory.in/weighted-biased-random-number-generation-with-javascript-based-on-probability/
+    utils.weightedRandom = function(weights){
+        var totalWeight = weights.reduce(function(prev,cur){
+            return prev + cur;
+        });
+        var rand = _.random(0,totalWeight);
+        var weightSum = 0;
+        for(var i = 0; i < weights.length; i++){
+            weightSum += weights[i];
+            weightSum = +weightSum;
+            if(rand <= weightSum){
+                return i;
+            }
+        }
+    };
+
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = utils;
+        root.utils = utils;
+    }else{
+        root.utils = utils;
+    }
+}());
+},{"underscore":3}]},{},[7])
