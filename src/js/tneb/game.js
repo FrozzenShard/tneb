@@ -11,7 +11,7 @@
     var Create = require('tneb/create.js');
     var Location = require('tneb/systems/map/location.js');
     var events = require('tneb/systems/map/events.js');
-    //var User = require('./user.js);
+    var Player = require('tneb/player.js');
     
     var Game = {};
     Game.systems = {};
@@ -27,10 +27,10 @@
     Game.global.events = {};
     _.extend(Game.global.events,hook);
     Game.init = function(){
-        Game.activePlayer = new Character({},this);
+        Game.activePlayer = new Player(this);
         Game.timer.lastTime = Date.now();
         Game.loop();
-        Game.systems.battle = Battle(this);
+        Game.systems.battle = new Battle(this);
         Game.create = Create(this);
     };
     
@@ -38,11 +38,13 @@
         _.each(Game.systems,function(v,k){
             v.update();
         });
+        this.activePlayer.update();
     };
     Game.render = function(){
         _.each(Game.systems,function(v,k){
             v.render(Game.activePlayer);
         });
+        this.activePlayer.render();
     };
     Game.loop = function(){
         Game.timer.elapsed = (Date.now() - Game.timer.lastTime) / 1000;
@@ -52,6 +54,7 @@
         Game.timeout = setTimeout(Game.loop,1000/config.fps);
         Game.timer.lastTime = Date.now();
     };
+    Game.init();
     Game.global.version = "0.0.2";
     if(typeof module !== 'undefined' && module.exports){
         module.exports = Game;
