@@ -9,152 +9,12 @@
         this.fighterB;
         this.Game = Game;
         this.active = false;
-        this.ui = {};
         this.init();
     }
     Battle.version = "0.0.1";
     Battle.prototype.init = function () {
         this.Game.global.events.trigger('battle:systemInit');
         //this.initUi();
-    };
-    Battle.prototype.initUi = function () {
-        this.ui.player = {};
-        var base = this.ui.player.playerBase = $("#player-battle-stats");
-        this.ui.player.stats = {
-            health: {
-                $name: base.find(".health .name"),
-                $value: base.find(".health .value")
-            },
-            mana: {
-                $name: base.find(".mana .name"),
-                $value: base.find(".mana .value")
-            },
-            str: {
-                $name: base.find(".str .name"),
-                $value: base.find(".str .value")
-            },
-            dex: {
-                $name: base.find(".dex .name"),
-                $value: base.find(".dex .value")
-            },
-            int: {
-                $name: base.find(".int .name"),
-                $value: base.find(".int .value")
-            },
-            speed: {
-                $name: base.find(".speed .name"),
-                $value: base.find(".speed .value")
-            },
-            armor: {
-                $name: base.find(".armor .name"),
-                $value: base.find(".armor .value")
-            },
-            magicRes: {
-                $name: base.find(".magic-res .name"),
-                $value: base.find(".magic-res .value")
-            },
-            fireRes: {
-                $name: base.find(".fire-res .name"),
-                $value: base.find(".fire-res .value")
-            },
-            iceRes: {
-                $name: base.find(".ice-res .name"),
-                $value: base.find(".ice-res .value")
-            },
-            waterRes: {
-                $name: base.find(".water-res .name"),
-                $value: base.find(".water-res .value")
-            },
-            elecRes: {
-                $name: base.find(".elec-res .name"),
-                $value: base.find(".elec-res .value")
-            },
-            earthRes: {
-                $name: base.find(".earth-res .name"),
-                $value: base.find(".earth-res .value")
-            },
-            windRes: {
-                $name: base.find(".wind-res .name"),
-                $value: base.find(".wind-res .value")
-            },
-            lightRes: {
-                $name: base.find(".light-res .name"),
-                $value: base.find(".light-res .value")
-            },
-            darkRes: {
-                $name: base.find(".dark-res .name"),
-                $value: base.find(".dark-res .value")
-            }
-        };
-        this.ui.enemy = {};
-        base = this.ui.enemy.base = $("#enemy-battle-stats");
-        this.ui.enemy.stats = {
-            health: {
-                $name: base.find(".health .name"),
-                $value: base.find(".health .value")
-            },
-            mana: {
-                $name: base.find(".mana .name"),
-                $value: base.find(".mana .value")
-            },
-            str: {
-                $name: base.find(".str .name"),
-                $value: base.find(".str .value")
-            },
-            dex: {
-                $name: base.find(".dex .name"),
-                $value: base.find(".dex .value")
-            },
-            int: {
-                $name: base.find(".int .name"),
-                $value: base.find(".int .value")
-            },
-            speed: {
-                $name: base.find(".speed .name"),
-                $value: base.find(".speed .value")
-            },
-            armor: {
-                $name: base.find(".armor .name"),
-                $value: base.find(".armor .value")
-            },
-            magicRes: {
-                $name: base.find(".magic-res .name"),
-                $value: base.find(".magic-res .value")
-            },
-            fireRes: {
-                $name: base.find(".fire-res .name"),
-                $value: base.find(".fire-res .value")
-            },
-            iceRes: {
-                $name: base.find(".ice-res .name"),
-                $value: base.find(".ice-res .value")
-            },
-            waterRes: {
-                $name: base.find(".water-res .name"),
-                $value: base.find(".water-res .value")
-            },
-            elecRes: {
-                $name: base.find(".elec-res .name"),
-                $value: base.find(".elec-res .value")
-            },
-            earthRes: {
-                $name: base.find(".earth-res .name"),
-                $value: base.find(".earth-res .value")
-            },
-            windRes: {
-                $name: base.find(".wind-res .name"),
-                $value: base.find(".wind-res .value")
-            },
-            lightRes: {
-                $name: base.find(".light-res .name"),
-                $value: base.find(".light-res .value")
-            },
-            darkRes: {
-                $name: base.find(".dark-res .name"),
-                $value: base.find(".dark-res .value")
-            }
-        };
-        base = null;
     };
 
     Battle.prototype.update = function () {
@@ -194,12 +54,7 @@
 
 
     Battle.prototype.render = function (player, enemy) {
-        player = player || this.fighterA;
-        enemy = enemy || this.fighterB;
-        console.log(player);
-        if (player) {
-            this.ui.player.stats.health.$value.text(player.getStat('health', 'current'));
-        }
+        
     };
 
     Battle.prototype.start = function (fighterA, fighterB, conditions) {
