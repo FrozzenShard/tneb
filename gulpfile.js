@@ -36,6 +36,11 @@ gulp.task('fuckingwindows', function(){
     .pipe(gulp.dest('./node_modules/tneb'));
 });
 
+gulp.task('dev', function(){
+    base = './dev/';
+    return gulp.run('sass', 'move-static', 'browserify');
+});
+
 gulp.task('watch', function(){
     base = "./dev/";
     gulp.watch('./src/js/tneb/**/*.js', ['fuckingwindows', 'browserify']);

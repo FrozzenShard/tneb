@@ -14,6 +14,21 @@ body{
         margin : 5px 0;
     }
 }
+.bar{
+    width: 100%;
+    height: 8px;
+    margin-bottom: 5px;
+    display : block;
+    &.red{
+        background: red;
+    }
+    &.blue{
+        background : blue;
+    }
+    &.orange{
+        background : orange;
+    }
+}
 
 #skills{
     & li{
