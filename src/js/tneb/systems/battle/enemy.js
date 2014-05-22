@@ -2,15 +2,16 @@
     var root = this;
     var Character = require('./character.js');
     
-    function Monster(){
+    function Enemy(){
         Character.apply(this,arguments);
     }
     
-    Monster.prototype = Character.prototype;
+    Enemy.prototype = Character.prototype;
     if(typeof module !== 'undefined' && module.exports){
-        module.exports = Monster;
-        root.Monster = Monster;
+        module.exports = Enemy;
+        
+        root.Enemy = Enemy;
     }else{
-        root.Monster = Monster;
+        root.Enemy = Enemy;
     }
 }());

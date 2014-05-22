@@ -2,12 +2,12 @@
     var root = this;
     var create;
     var Character = require('tneb/systems/battle/character.js');
-    var Monster = require('tneb/systems/battle/monster.js');
+    var Enemy = require('tneb/systems/battle/enemy.js');
     function Create(){
         if(create) return create;
         create = {};
-        create.Monster = function(name){
-            var ret = new Monster({name : name});
+        create.Enemy = function(name){
+            var ret = new Enemy({name : name});
             return ret;
         };
         return create;
