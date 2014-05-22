@@ -22,8 +22,8 @@
         return ret;
     };
     
-    function SpawnEvent(Game,monster){
-        var m = Game.create.Monster("Dickhead");
+    function SpawnEvent(Game,enemy){
+        var m = Game.create.Enemy("Dickhead");
         if(Game.systems.battle.active) return false;
         Game.systems.battle.start(Game.activePlayer,m);
         Game.global.events.trigger("system:event:"+this.toString());

@@ -19,11 +19,7 @@
         elapsed : 1,
         lastTime : 1
     };
-    Game.global = {
-        _ : _,
-        backbone : backbone,
-        modApi : modApi
-    };
+    Game.global = {};
     Game.global.events = {};
     _.extend(Game.global.events,hook);
     Game.init = function(){
@@ -55,7 +51,7 @@
         Game.timer.lastTime = Date.now();
     };
     Game.init();
-    Game.global.version = "0.0.2";
+    Game.version = "0.0.2";
     if(typeof module !== 'undefined' && module.exports){
         module.exports = Game;
         root.Game = Game;

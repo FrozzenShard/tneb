@@ -3,7 +3,7 @@ var events = require('tneb/systems/map/events.js'),
     Location = require('tneb/systems/map/location.js'),
     Create = require('tneb/create.js'),
     Character = require('tneb/systems/battle/character.js'),
-    Monster = require('tneb/systems/battle/monster.js'),
+    Enemy = require('tneb/systems/battle/enemy.js'),
     Mocks = require('./helpers/mocks.js');
 
 var mocha = require('mocha'),
@@ -43,9 +43,9 @@ describe("events", function(){
             }
         };
         
-        it("Should create a 'monster' and return it", function(){
+        it("Should create a 'Enemy' and return it", function(){
             var ret = se(gamemock,"Bob");
-            expect(ret).to.be.an.instanceOf(Monster);
+            expect(ret).to.be.an.instanceOf(Enemy);
         });
     });
     
