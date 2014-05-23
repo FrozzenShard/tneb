@@ -4,3 +4,4 @@ node_modules/
 vendor/
 *.npmignore
 dev/
+dist/
