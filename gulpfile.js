@@ -3,7 +3,6 @@ var gulp = require('gulp');
 var source = require('vinyl-source-stream');
 var sass = require('gulp-ruby-sass');
 var concat = require('gulp-concat');
-var watch = require('gulp-watch');
 
 var base = "./dist/";
 var scssFiles = [
@@ -19,6 +18,14 @@ gulp.task('browserify', function(){
     .pipe(source('main.js'))
     .pipe(gulp.dest(base + 'js/'));
 });
+
+gulp.task('browserify-compress', function(){
+    return browserify('tneb/game.js', {paths : ['./node_modules', './src/js/tneb'] })
+    .bundle()
+    .pipe(source('main.js'))
+    .pipe(gulp.dest(base + 'js/'));
+});
+
 gulp.task('move-static', function(){
     return  gulp.src('./src/index.html')
     .pipe(gulp.dest(base));
@@ -48,4 +55,4 @@ gulp.task('watch', function(){
     gulp.watch('./src/index.html',['move-static']);
 });
 
-gulp.task('default', ['browserify','move-static', 'sass']);
+gulp.task('default', ['browserify-compress','move-static', 'sass']);
