@@ -12,6 +12,7 @@
     var Location = require('tneb/systems/map/location.js');
     var events = require('tneb/systems/map/events.js');
     var Player = require('tneb/player.js');
+    var logger = require('tneb/logger');
     
     var Game = {};
     Game.systems = {};
