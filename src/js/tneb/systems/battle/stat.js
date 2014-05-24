@@ -2,10 +2,10 @@
     var root = this;
     var _ = require('underscore');
     function Stat(name,val,max,min){
+        if(!(this instanceof Stat)) return new Stat(name,val,max,min); // Thanks jarofghosts
         this.modifiers = [];
+        this.afterModifiers = [];
         this._baseValue = val || 0;
-        this._max;
-        this._min;
         if(max != null) this._max = max;
         if(min != null) this._min = min;
     }
@@ -34,6 +34,7 @@
     };
     
     Stat.prototype.max = function(val,set){
+        if(arguments.length === 0) return this._max;
         if(set || this._max === undefined) this._max = val;
         else if(val) this._max += val;
         this.clamp();
@@ -45,6 +46,7 @@
     };
     
     Stat.prototype.min = function(val,set){
+        if(arguments.length === 0) return this._min;
         if(set || this._min === undefined) this._min = val;
         else if(val) this._min += val;
         this.clamp();
@@ -122,6 +124,7 @@
         };
         if(_.isFunction(value) || after){
             this.modifiers.unshift(m);
+            if(after) this.afterModifiers.push(after);
         }else{
             this.modifiers.push(m);
         }
