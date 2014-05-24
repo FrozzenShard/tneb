@@ -2,12 +2,13 @@
     var root = this;
     var _ = require('underscore');
     function Stat(name,val,max,min){
-        if(!(this instanceof Stat)) return new Stat(name,val,max,min); // Thanks jarofghosts
+        if(!(this instanceof Stat)) return new Stat(name,val,max,min); // Thanks jarofghostss
         this.modifiers = [];
         this.afterModifiers = [];
         this._baseValue = val || 0;
         if(max != null) this._max = max;
         if(min != null) this._min = min;
+        this.name = name;
     }
     
     Stat.prototype.increase = function(val){
