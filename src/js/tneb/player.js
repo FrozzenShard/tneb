@@ -8,14 +8,16 @@
                       "Muffer-Nl", "gamehelp16", "firewires"];
     var _ = require('underscore');
     function Player(Game){
-        this.character = new Character(null,Game);
+        this.party = [new Character(null,Game)];
         this.ui = {};
         this.Game = Game;
         this.name = _.sample(randomNames,1);
-        this.initUi();
-        this.character.stats.health.baseValue(0,true);
         this.lastFrame = {};
         this.inBattle = false;
+        this.initUi();
+        this.Game.global.events.on("battle:start", function(){
+            this.inBattle = true;
+        });
     }
     
     Player.prototype.initUi = function(){
@@ -47,15 +49,28 @@
             $name : base.find('.name'),
             $bar : base.find('.bar')
         };
+        
+        this.ui.battleDisplay.actions = {
+            $attack : this.ui.battleDisplay.base.find('.attack'),
+            $skills : this.ui.battleDisplay.base.find('.skills')
+        };
+        this.ui.battleDisplay.actions.$attack.prop('disabled',!this.inBattle);
+        //console.log(this.ui.battleDisplay.actions.$attack, this.inBattle);
     };
     
     Player.prototype.update = function(){
-        if(!this.character.stats.health.isMax()){
-            this.character.stats.health.increase(this.character.stats.healthRegen.getTotal()*this.Game.timer.elapsed);
+        for(var i = 0; i < this.party.length; i++){
+            var curChar = this.party[i];
+            if(!curChar.stats.health.isMax()){
+                curChar.stats.health.increase(this.character.stats.healthRegen.getTotal()*this.Game.timer.elapsed);
+            }
         }
     };
     
     Player.prototype.render = function(){
+        if(this.lastFrame.inBattle !== this.inBattle){
+            this.ui.battleDisplay.actions.$attack.prop('disabled',!this.inBattle);
+        }
         if(!this.character.stats.health.isMax()){
             this.ui.battleDisplay.healthDisplay.$bar.width( (this.character.stats.health.baseValue() / this.character.stats.health.max()) * 100 + "%");
         }
