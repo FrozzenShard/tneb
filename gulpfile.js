@@ -3,6 +3,7 @@ var gulp = require('gulp');
 var source = require('vinyl-source-stream');
 var sass = require('gulp-ruby-sass');
 var concat = require('gulp-concat');
+var hbsfy = require('hbsfy');
 
 var base = "./dist/";
 var scssFiles = [
@@ -13,14 +14,8 @@ var scssFiles = [
 ];
 
 gulp.task('browserify', function(){
-    return browserify('./src/js/tneb/game.js', {paths : ['./node_modules', './src/js/game'] })
-    .bundle()
-    .pipe(source('main.js'))
-    .pipe(gulp.dest(base + 'js/'));
-});
-
-gulp.task('browserify-compress', function(){
-    return browserify('tneb/game.js', {paths : ['./node_modules', './src/js/tneb'] })
+    return browserify('./src/js/tneb/game.js', {paths : [ './node_modules', './src/js/', './src/views/'] })
+    .transform(hbsfy)
     .bundle()
     .pipe(source('main.js'))
     .pipe(gulp.dest(base + 'js/'));
@@ -37,22 +32,21 @@ gulp.task('sass', function(){
     .pipe(gulp.dest( base + 'css'));
 });
 
-gulp.task('fuckingwindows', function(){
+gulp.task('mochaplz', function(){
     return gulp.src('./src/js/tneb/**/*.js', {base : './src/js/tneb/'})
     .pipe(gulp.dest('./node_modules/tneb'));
 });
 
 gulp.task('dev', function(){
     base = './dev/';
-    return gulp.run('sass', 'move-static', 'fuckingwindows', 'browserify');
+    return gulp.run('sass', 'move-static', 'browserify');
 });
 
 gulp.task('watch', function(){
     base = "./dev/";
-    gulp.watch('./src/js/tneb/**/*.js', ['fuckingwindows', 'browserify']);
+    gulp.watch('./src/js/tneb/**/*.js', ['browserify']);
     gulp.watch('./src/scss/**/*.scss', ['sass']);
-    //gulp.watch('./src/js/game/**/*.js',['browserify']);
     gulp.watch('./src/index.html',['move-static']);
 });
 
-gulp.task('default', ['browserify-compress','move-static', 'sass']);
+gulp.task('default', ['browserify','move-static', 'sass']);
