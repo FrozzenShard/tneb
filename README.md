@@ -18,9 +18,9 @@ Installation
 ============
 First you need [Node+Npm](http://nodejs.org/).
 
-Next using the commandline install Gulp.js
+Next using the commandline install Gulp.js and Browserify.
 
-    npm install -g gulp
+    npm install -g gulp browserify
 
 Install the project dependencies
 
@@ -37,3 +37,5 @@ Default is to minify the files, if you want to run the files unminified run the 
 To test simple run mocha
 
     mocha
+
+Because I'm a dolt, when you make changes you must run **gulp update** before they will be noticed.
