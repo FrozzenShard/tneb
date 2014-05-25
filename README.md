@@ -38,4 +38,3 @@ To test simple run mocha
 
     mocha
 
-Because I'm a dolt, when you make changes you must run **gulp update** before they will be noticed.
