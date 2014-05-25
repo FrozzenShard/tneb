@@ -7,13 +7,15 @@
     var Calculator = require('./calculator.js');
     var Stat = require('./stat.js');
 
-    function Character(data,name, Game) {
+    function Character(data,name,controller) {
         var stats = Character.prototype.getDefaultStats();
         this.calculator = new Calculator(this);
-        this.isAi = true;
+        this.canAction = true;
         if (_.isObject(data)) {
             utils.objOverride(stats, data);
         }
+        this.name = name;
+        this.controller = controller;
         this.convertToStatObj(stats);
         this.stats = stats;
         this.equipped = {
@@ -25,17 +27,9 @@
             bottom: null,
             accessory: null
         };
-        this.canAction = false;
         this.inventory = [];
         this.skills = [];
         this.battleRating = 0;
-        if(_.isString(name)){
-            this.Game = Game;
-            this.name = name;
-        }else{
-            this.Game = name;
-            this.name = "Default name";
-        }
     }
     
     Character.prototype.convertToStatObj = function(stats){
@@ -93,20 +87,14 @@
     };
 
     Character.prototype.doAction = function (target) {
-        if (this.isAi) {
-            return this.aiAction(target);
-        }else{
-            this.canAction = true;
+        if(this.canAction){
+            this.controller.doAction(target);
         }
-    };
-
-    Character.prototype.aiAction = function (target) {
-        this.useSkill(this.basicAttack(), target);
     };
 
     Character.prototype.useSkill = function (skill, target) {
         if (!skill.cost(this, target)) return false;
-        this.Game.global.events.trigger('system:battle:cast:skill', skill, this, target);
+        this.controller.Game.global.events.trigger('system:battle:cast:skill', skill, this, target);
         skill.use(this, target);
     };
 
@@ -191,13 +179,13 @@
 
     Character.prototype.takeDamage = function (val, type, el, pure) {
         this.changeHealth(-val);
-        this.Game.global.events.trigger('system:battle:takenDamage:', val, type, el, pure);
+        this.controller.Game.global.events.trigger('system:battle:takenDamage:', val, type, el, pure);
     };
 
     Character.prototype.changeHealth = function (val) {
         this.stats.health.change(val);
         if (this.stats.health.baseValue() < 1) {
-            this.Game.global.events.trigger('system:character:death', this);
+            this.controller.Game.global.events.trigger('system:character:death', this);
         }
     };
 
@@ -219,8 +207,8 @@
             physicalPower: 0,
             magicalPower: 0,
             magicRes: 0.2,
-            speed: 50,
-            speedGain: 100,
+            speed: 500,
+            speedGain: 10,
             healthRegen: 0.2, // Internally represented as per second but displayed as per 5 to the player
             manaRegen: 0.125,
 

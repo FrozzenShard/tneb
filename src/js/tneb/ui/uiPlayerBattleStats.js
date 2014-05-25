@@ -2,9 +2,10 @@
     var root = this;
     var $ = require('jQuery');
     var _ = require('underscore');
-    var tmpl = require('tneb-templates/character-slot.hbs');
+    var tmpl = require('tneb-templates/playerSlot.hbs');
     var Stat = require('tneb/systems/battle/stat');
-    function UICharacter(controller, character, parent, wrapper){
+
+    function UIPlayerBattleStats(controller, character, parent, wrapper){
         this.character = character;
         this.controller = controller;
         this.template = tmpl;
@@ -19,48 +20,58 @@
 
 
 
-    UICharacter.prototype.createUiData = function() {
+    UIPlayerBattleStats.prototype.createUiData = function() {
         var base = this.$wrapper.find('.health-display');
+        var self = this;
         this.uiData = {};
         this.uiData.health = {
             $el : base,
             $name : base.find('.name'),
             $bar : base.find('.bar'),
-            stat : this.character.stats.health
-        }
+            stat : self.character.stats.health
+        };
         base = this.$wrapper.find('.mana-display');
         this.uiData.mana = {
             $el : base,
             $name : base.find('.name'),
             $bar : base.find('.bar'),
-            stat : this.character.stats.mana
-        }
+            stat : self.character.stats.mana
+        };
 
         base = this.$wrapper.find('.exp-display');
         this.uiData.exp = {
             $el : base,
             $name : base.find('.name'),
             $bar : base.find('.bar'),
-            stat : this.character.stats.exp
-        }
+            stat : self.character.stats.exp
+        };
 
         base = this.$wrapper.find('.speed-display');
         this.uiData.speed = {
             $el : base,
             $name : base.find('.name'),
             $bar : base.find('.bar'),
-            stat : this.character.stats.speed
-        }
-        this.uiData.attackBtn = {
-            $el : base.find('.attack')
+            stat : self.character.stats.speed
         };
+        this.uiData.attackBtn = {
+            $el : self.$wrapper.find('.attack')
+        };
+
+        base = this.$wrapper.find('.name-display');
+        this.uiData.name = {
+            $el : base,
+            $name : base.find('.name'),
+            $title : base.find('.title')
+        }
     };
 
-    UICharacter.prototype.update = function(){
+    UIPlayerBattleStats.prototype.update = function(){
         
     };
 
-    UICharacter.prototype.render = function(){
+    UIPlayerBattleStats.prototype.render = function(){
+        this.uiData.name.$name.text(this.controller.name);
+        this.uiData.name.$title.text(this.controller.name);
         this.uiData.health.$name.text(this.uiData.health.stat.name);
         this.uiData.mana.$name.text(this.uiData.mana.stat.name);
         this.uiData.exp.$name.text(this.uiData.exp.stat.name);
@@ -72,12 +83,12 @@
         this.uiData.speed.$bar.width( (this.uiData.speed.stat.baseValue() / this.uiData.speed.stat.max()) * 100 + "%");
     };
 
-    UICharacter.prototype.enableAttackBtn = function(enabled){
+    UIPlayerBattleStats.prototype.enableAttackBtn = function(enabled){
         this.uiData.attackBtn.$el.prop('disabled', enabled);
     };
 
     if(typeof module !== 'undefined' && module.exports){
-        module.exports = UICharacter;
+        module.exports = UIPlayerBattleStats;
     }
-    root.UICharacter = UICharacter;
+    root.UIPlayerBattleStats = UIPlayerBattleStats;
 }());

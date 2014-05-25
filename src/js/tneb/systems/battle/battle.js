@@ -14,7 +14,7 @@
     Battle.version = "0.0.1";
     Battle.prototype.init = function () {
         this.Game.global.events.trigger('battle:systemInit');
-        //this.initUi();
+
     };
 
     Battle.prototype.update = function () {
@@ -41,7 +41,6 @@
             var len = this.actionQueue.length;
             while (len-- && this.active) {
                 this.actionQueue[len][0].doAction(this.actionQueue[len][1]);
-                this.actionQueue[len][0].stats.speed.baseValue(0);
                 this.actionQueue.pop();
             }
         }

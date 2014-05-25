@@ -19,7 +19,7 @@ describe("character", function () {
     it("Should create a new character with overridden defaults", function () {
         var c = new Character({
                 str: 999
-            },GameMock);
+            },"Name",{Game : GameMock});
         expect(c.stats.str.baseValue()).to.equal(999);
         expect(c.stats.dex.baseValue()).to.equal(defaults.dex);
     });
@@ -29,8 +29,8 @@ describe("character", function () {
             health: 200,
             armor: 30
         };
-        var char = new Character(stats,GameMock);
-        var target = new Character(stats,GameMock);
+        var char = new Character(stats,"Name",{Game : GameMock});
+        var target = new Character(stats,"Name",{Game : GameMock});
         var startingHealth = char.stats.health.baseValue();
         var d = char.applyDamage({
             skill : null,
@@ -49,8 +49,8 @@ describe("character", function () {
             armor: 30,
             magicRes: 30
         };
-        var char = new Character(stats,GameMock);
-        var target = new Character(stats,GameMock);
+        var char = new Character(stats,"Name",{Game : GameMock});
+        var target = new Character(stats,"Name",{Game : GameMock});
         var startingHealth = char.stats.health.baseValue();
         var d = char.applyDamage({
             skill : null,
