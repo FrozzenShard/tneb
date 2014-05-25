@@ -21,7 +21,8 @@
         if (!this.active) return;
         var fasg = this.fighterA.stats.speedGain.getTotal() * this.Game.timer.elapsed;
         // I originally was going to abbrivate as FighterAspeedGain but that seemed like a bad idea.
-        var fbsg = this.fighterA.stats.speedGain.getTotal() * this.Game.timer.elapsed;
+        var fbsg = this.fighterB.stats.speedGain.getTotal() * this.Game.timer.elapsed;
+
         this.fighterA.stats.speed.increase(fasg);
         this.fighterB.stats.speed.increase(fbsg);
 
