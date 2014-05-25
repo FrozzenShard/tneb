@@ -13,100 +13,42 @@
         <link rel="stylesheet" href="css/all.css">
     </head>
     <body>
-        <div class="container">
+        <div class="container-fluid">
             <div id="left-panel" class="col-lg-6 col-md-5 col-sm-6">
                 <h1>Glory Foreverever <small class="text-muted">(Working Title)</small></h1>
                 <div id="battle-panel">
                     <div class="row">
                         <div id="player-battle-info" class="col-lg-6 battle-stats">
-                            <span id="player-name">Robotmayo</span>
-                            <span id="player-title" class="text-muted">- The Date Misser</span>
-                            <div class="row">
-                                <div id="player-battle-stats" class="col-lg-12">
-                                    <div class="row">
-                                        <div class="col-lg-4 player-vitals">
-                                            <p class="health"><span class="name">Health</span> : <span class="value">63</span></p>
-                                            <p class="mana"><span class="name">Mana</span>: <span class="value">6</span></p>
-                                            <p><span class="name">Speed</span> : <span class="value">6</span></p>
-                                            <p class="stat str"><span class="name">Str</span> : <span class="value">6</span></p>
-                                            <p class="stat dex"><span class="name">Dex</span> : <span class="value">6</span></p>
-                                            <p class="stat int"><span class="name">Int</span> : <span class="value">6</span></p>
-                                            <p class="stat luk"><span class="name">Luk</span> : <span class="value">6</span></p>
-                                        </div>
-                                        <div class="col-lg-8 defensive-stats">
-                                            <p class="stat armor"><span class="name">Armor</span> : <span class="value">6</span></p>
-                                            <p class="stat magic-res"><span class="name">Magic Res</span> : <span class="value">6</span></p>
-                                            <p class="stat fire-res"><span class="name">Fire Res</span> : <span class="value">6</span></p>
-                                            <p class="stat water-res"><span class="name">Water Res</span> : <span class="value">6</span></p>
-                                            <p class="stat ice-res"><span class="name">Ice Res</span> : <span class="value">6</span></p>
-                                            <p class="stat elec-res"><span class="name">Elec Res</span> : <span class="value">6</span></p>
-                                            <p class="stat wind-res"><span class="name">Wind Res</span> : <span class="value">6</span></p>
-                                            <p class="stat earth-res"><span class="name">Earth Res</span> : <span class="value">6</span></p>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div id="player-action" class="col-lg-12">
-                                    <button class="btn btn-block btn-primary" id="attack">Attack</button>
-                                    <span>Skills</span>
-                                    <ul id="skills">
-                                        <li><img src="fireball_icon.png" alt="fireball_icon"></li>
-                                        <li><img src="power_strike_icon.png" alt="bash_icon"></li>
-                                    </ul>
-                                    
-                                </div><!-- Close Player Stats -->
-                            </div><!-- Close Row -->
-                        </div><!-- Close Player Info -->
-                        <div id="enemy-battle-info" class="col-lg-6 battle-stats">
-                            <span id="enemy-prefix" class="text-muted prefix flaming">Flaming </span>
-                            <span id="player-name">Raccoon</span>
                             <div class="row">
                                 <div class="col-lg-12">
                                     <div class="row">
-                                        <div id="player-vitals" class="col-lg-4">
-                                            <p class="health"><span class="name">Health</span> : <span class="value">63</span></p>
-                                            <p class="mana"><span class="name">Mana</span>: <span class="value">6</span></p>
-                                            <p><span class="name">Speed</span> : <span class="value">6</span></p>
-                                            <p class="stat str"><span class="name">Str</span> : <span class="value">6</span></p>
-                                            <p class="stat dex"><span class="name">Dex</span> : <span class="value">6</span></p>
-                                            <p class="stat int"><span class="name">Int</span> : <span class="value">6</span></p>
-                                            <p class="stat luk"><span class="name">Luk</span> : <span class="value">6</span></p>
-                                        </div>
-                                        <div id="player-battle-stats" class="col-lg-8">
-                                            <div class="row">
-                                                <div class="defensive-stats col-lg-8">
-                                                    <p class="stat armor"><span class="name">Armor</span> : <span class="value">6</span></p>
-                                                    <p class="stat magic-res"><span class="name">Magic Res</span> : <span class="value">6</span></p>
-                                                    <p class="stat fire-res"><span class="name">Fire Res</span> : <span class="value">6</span></p>
-                                                    <p class="stat water-res"><span class="name">Water Res</span> : <span class="value">6</span></p>
-                                                    <p class="stat ice-res"><span class="name">Ice Res</span> : <span class="value">6</span></p>
-                                                    <p class="stat elec-res"><span class="name">Elec Res</span> : <span class="value">6</span></p>
-                                                    <p class="stat wind-res"><span class="name">Wind Res</span> : <span class="value">6</span></p>
-                                                    <p class="stat earth-res"><span class="name">Earth Res</span> : <span class="value">6</span></p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
+                                        <div class="col-lg-12" id="party-battle-stats">
+                                            <!-- Slots Go Here-->
+                                        </div><!-- End Stats -->
+                                    </div><!-- End Row -->
+                                </div><!-- End Battle Info -->
+                            </div><!-- Close Row -->
+                        </div><!-- Close Player Info -->
+                        <div id="enemy-battle-info" class="col-lg-6 battle-stats">
+                            <div class="row">
+                                <div class="col-lg-12">
+                                    <div class="row">
+                                        <div class="col-lg-12" id = "enemy-battle-stats">
+                                        </div><!-- End Stats -->
+                                    </div><!-- End Row -->
+                                </div><!-- End Battle Info -->
                             </div><!-- Close Row -->
                         </div><!-- Close Enemy Info -->
                     </div><!-- Close Row -->
                 </div><!-- Close Battle Panel -->
                 <hr>
                 <div id="logger">
-                    <p>[13:04][System] Save complete(Online)</p>
-                    <p>[12:59][System] Save complete(Local)</p>
-                    <p>[12:55][Blacksmith] Smithy has finshed crafting Purple Turtle Armor(+4)!</p>
-                    <p>[12:52][Mining] Rivet has discovered (Fine) Dark Crystal Powder!</p>
-                    <p>[12:47][Battle] You dealt 64 physical damage</p>
-                    <p>[12:45][Battle] Oh no! You have been burned! Taking 4 Pure Fire Damage per second.</p>
-                    <p>[12:45][Battle] Crit! You took 37 physical fire damage!</p>
-                    <p>[12:37][Event] Encounter! <em class="prefix flaming">Flaming</em> Racoon (Level 17)</p>
-                    <p>[12:34][Event] You found (Skill)<strong>Blaze It</strong>!</p>
+                    
                 </div>
             </div><!-- Close Left Panel -->
             <div id="right-panel" class="col-lg-6 col-md-7 col-sm-6">
                 <ul id="tabs" class="nav nav-tabs">
-                    <li class="tab active" id="inventory"><a href="">Inventory</a></li>
+                    <li class="tab active" id="party"><a href="javascript:;">Player</a></li>
                     <li class="tab" id="inventory"><a href="javascript:;">Map</a></li>
                     <li class="tab" id="crafting"><a href="javascript:;">Blacksmith</a></li>
                     <li class="tab" id="mining"><a href="javascript:;">Mining</a></li>

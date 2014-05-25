@@ -1,1614 +1,4 @@
 (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
-//     Backbone.js 1.1.2
-
-//     (c) 2010-2014 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
-//     Backbone may be freely distributed under the MIT license.
-//     For all details and documentation:
-//     http://backbonejs.org
-
-(function(root, factory) {
-
-  // Set up Backbone appropriately for the environment. Start with AMD.
-  if (typeof define === 'function' && define.amd) {
-    define(['underscore', 'jquery', 'exports'], function(_, $, exports) {
-      // Export global even in AMD case in case this script is loaded with
-      // others that may still expect a global Backbone.
-      root.Backbone = factory(root, exports, _, $);
-    });
-
-  // Next for Node.js or CommonJS. jQuery may not be needed as a module.
-  } else if (typeof exports !== 'undefined') {
-    var _ = require('underscore');
-    factory(root, exports, _);
-
-  // Finally, as a browser global.
-  } else {
-    root.Backbone = factory(root, {}, root._, (root.jQuery || root.Zepto || root.ender || root.$));
-  }
-
-}(this, function(root, Backbone, _, $) {
-
-  // Initial Setup
-  // -------------
-
-  // Save the previous value of the `Backbone` variable, so that it can be
-  // restored later on, if `noConflict` is used.
-  var previousBackbone = root.Backbone;
-
-  // Create local references to array methods we'll want to use later.
-  var array = [];
-  var push = array.push;
-  var slice = array.slice;
-  var splice = array.splice;
-
-  // Current version of the library. Keep in sync with `package.json`.
-  Backbone.VERSION = '1.1.2';
-
-  // For Backbone's purposes, jQuery, Zepto, Ender, or My Library (kidding) owns
-  // the `$` variable.
-  Backbone.$ = $;
-
-  // Runs Backbone.js in *noConflict* mode, returning the `Backbone` variable
-  // to its previous owner. Returns a reference to this Backbone object.
-  Backbone.noConflict = function() {
-    root.Backbone = previousBackbone;
-    return this;
-  };
-
-  // Turn on `emulateHTTP` to support legacy HTTP servers. Setting this option
-  // will fake `"PATCH"`, `"PUT"` and `"DELETE"` requests via the `_method` parameter and
-  // set a `X-Http-Method-Override` header.
-  Backbone.emulateHTTP = false;
-
-  // Turn on `emulateJSON` to support legacy servers that can't deal with direct
-  // `application/json` requests ... will encode the body as
-  // `application/x-www-form-urlencoded` instead and will send the model in a
-  // form param named `model`.
-  Backbone.emulateJSON = false;
-
-  // Backbone.Events
-  // ---------------
-
-  // A module that can be mixed in to *any object* in order to provide it with
-  // custom events. You may bind with `on` or remove with `off` callback
-  // functions to an event; `trigger`-ing an event fires all callbacks in
-  // succession.
-  //
-  //     var object = {};
-  //     _.extend(object, Backbone.Events);
-  //     object.on('expand', function(){ alert('expanded'); });
-  //     object.trigger('expand');
-  //
-  var Events = Backbone.Events = {
-
-    // Bind an event to a `callback` function. Passing `"all"` will bind
-    // the callback to all events fired.
-    on: function(name, callback, context) {
-      if (!eventsApi(this, 'on', name, [callback, context]) || !callback) return this;
-      this._events || (this._events = {});
-      var events = this._events[name] || (this._events[name] = []);
-      events.push({callback: callback, context: context, ctx: context || this});
-      return this;
-    },
-
-    // Bind an event to only be triggered a single time. After the first time
-    // the callback is invoked, it will be removed.
-    once: function(name, callback, context) {
-      if (!eventsApi(this, 'once', name, [callback, context]) || !callback) return this;
-      var self = this;
-      var once = _.once(function() {
-        self.off(name, once);
-        callback.apply(this, arguments);
-      });
-      once._callback = callback;
-      return this.on(name, once, context);
-    },
-
-    // Remove one or many callbacks. If `context` is null, removes all
-    // callbacks with that function. If `callback` is null, removes all
-    // callbacks for the event. If `name` is null, removes all bound
-    // callbacks for all events.
-    off: function(name, callback, context) {
-      var retain, ev, events, names, i, l, j, k;
-      if (!this._events || !eventsApi(this, 'off', name, [callback, context])) return this;
-      if (!name && !callback && !context) {
-        this._events = void 0;
-        return this;
-      }
-      names = name ? [name] : _.keys(this._events);
-      for (i = 0, l = names.length; i < l; i++) {
-        name = names[i];
-        if (events = this._events[name]) {
-          this._events[name] = retain = [];
-          if (callback || context) {
-            for (j = 0, k = events.length; j < k; j++) {
-              ev = events[j];
-              if ((callback && callback !== ev.callback && callback !== ev.callback._callback) ||
-                  (context && context !== ev.context)) {
-                retain.push(ev);
-              }
-            }
-          }
-          if (!retain.length) delete this._events[name];
-        }
-      }
-
-      return this;
-    },
-
-    // Trigger one or many events, firing all bound callbacks. Callbacks are
-    // passed the same arguments as `trigger` is, apart from the event name
-    // (unless you're listening on `"all"`, which will cause your callback to
-    // receive the true name of the event as the first argument).
-    trigger: function(name) {
-      if (!this._events) return this;
-      var args = slice.call(arguments, 1);
-      if (!eventsApi(this, 'trigger', name, args)) return this;
-      var events = this._events[name];
-      var allEvents = this._events.all;
-      if (events) triggerEvents(events, args);
-      if (allEvents) triggerEvents(allEvents, arguments);
-      return this;
-    },
-
-    // Tell this object to stop listening to either specific events ... or
-    // to every object it's currently listening to.
-    stopListening: function(obj, name, callback) {
-      var listeningTo = this._listeningTo;
-      if (!listeningTo) return this;
-      var remove = !name && !callback;
-      if (!callback && typeof name === 'object') callback = this;
-      if (obj) (listeningTo = {})[obj._listenId] = obj;
-      for (var id in listeningTo) {
-        obj = listeningTo[id];
-        obj.off(name, callback, this);
-        if (remove || _.isEmpty(obj._events)) delete this._listeningTo[id];
-      }
-      return this;
-    }
-
-  };
-
-  // Regular expression used to split event strings.
-  var eventSplitter = /\s+/;
-
-  // Implement fancy features of the Events API such as multiple event
-  // names `"change blur"` and jQuery-style event maps `{change: action}`
-  // in terms of the existing API.
-  var eventsApi = function(obj, action, name, rest) {
-    if (!name) return true;
-
-    // Handle event maps.
-    if (typeof name === 'object') {
-      for (var key in name) {
-        obj[action].apply(obj, [key, name[key]].concat(rest));
-      }
-      return false;
-    }
-
-    // Handle space separated event names.
-    if (eventSplitter.test(name)) {
-      var names = name.split(eventSplitter);
-      for (var i = 0, l = names.length; i < l; i++) {
-        obj[action].apply(obj, [names[i]].concat(rest));
-      }
-      return false;
-    }
-
-    return true;
-  };
-
-  // A difficult-to-believe, but optimized internal dispatch function for
-  // triggering events. Tries to keep the usual cases speedy (most internal
-  // Backbone events have 3 arguments).
-  var triggerEvents = function(events, args) {
-    var ev, i = -1, l = events.length, a1 = args[0], a2 = args[1], a3 = args[2];
-    switch (args.length) {
-      case 0: while (++i < l) (ev = events[i]).callback.call(ev.ctx); return;
-      case 1: while (++i < l) (ev = events[i]).callback.call(ev.ctx, a1); return;
-      case 2: while (++i < l) (ev = events[i]).callback.call(ev.ctx, a1, a2); return;
-      case 3: while (++i < l) (ev = events[i]).callback.call(ev.ctx, a1, a2, a3); return;
-      default: while (++i < l) (ev = events[i]).callback.apply(ev.ctx, args); return;
-    }
-  };
-
-  var listenMethods = {listenTo: 'on', listenToOnce: 'once'};
-
-  // Inversion-of-control versions of `on` and `once`. Tell *this* object to
-  // listen to an event in another object ... keeping track of what it's
-  // listening to.
-  _.each(listenMethods, function(implementation, method) {
-    Events[method] = function(obj, name, callback) {
-      var listeningTo = this._listeningTo || (this._listeningTo = {});
-      var id = obj._listenId || (obj._listenId = _.uniqueId('l'));
-      listeningTo[id] = obj;
-      if (!callback && typeof name === 'object') callback = this;
-      obj[implementation](name, callback, this);
-      return this;
-    };
-  });
-
-  // Aliases for backwards compatibility.
-  Events.bind   = Events.on;
-  Events.unbind = Events.off;
-
-  // Allow the `Backbone` object to serve as a global event bus, for folks who
-  // want global "pubsub" in a convenient place.
-  _.extend(Backbone, Events);
-
-  // Backbone.Model
-  // --------------
-
-  // Backbone **Models** are the basic data object in the framework --
-  // frequently representing a row in a table in a database on your server.
-  // A discrete chunk of data and a bunch of useful, related methods for
-  // performing computations and transformations on that data.
-
-  // Create a new model with the specified attributes. A client id (`cid`)
-  // is automatically generated and assigned for you.
-  var Model = Backbone.Model = function(attributes, options) {
-    var attrs = attributes || {};
-    options || (options = {});
-    this.cid = _.uniqueId('c');
-    this.attributes = {};
-    if (options.collection) this.collection = options.collection;
-    if (options.parse) attrs = this.parse(attrs, options) || {};
-    attrs = _.defaults({}, attrs, _.result(this, 'defaults'));
-    this.set(attrs, options);
-    this.changed = {};
-    this.initialize.apply(this, arguments);
-  };
-
-  // Attach all inheritable methods to the Model prototype.
-  _.extend(Model.prototype, Events, {
-
-    // A hash of attributes whose current and previous value differ.
-    changed: null,
-
-    // The value returned during the last failed validation.
-    validationError: null,
-
-    // The default name for the JSON `id` attribute is `"id"`. MongoDB and
-    // CouchDB users may want to set this to `"_id"`.
-    idAttribute: 'id',
-
-    // Initialize is an empty function by default. Override it with your own
-    // initialization logic.
-    initialize: function(){},
-
-    // Return a copy of the model's `attributes` object.
-    toJSON: function(options) {
-      return _.clone(this.attributes);
-    },
-
-    // Proxy `Backbone.sync` by default -- but override this if you need
-    // custom syncing semantics for *this* particular model.
-    sync: function() {
-      return Backbone.sync.apply(this, arguments);
-    },
-
-    // Get the value of an attribute.
-    get: function(attr) {
-      return this.attributes[attr];
-    },
-
-    // Get the HTML-escaped value of an attribute.
-    escape: function(attr) {
-      return _.escape(this.get(attr));
-    },
-
-    // Returns `true` if the attribute contains a value that is not null
-    // or undefined.
-    has: function(attr) {
-      return this.get(attr) != null;
-    },
-
-    // Set a hash of model attributes on the object, firing `"change"`. This is
-    // the core primitive operation of a model, updating the data and notifying
-    // anyone who needs to know about the change in state. The heart of the beast.
-    set: function(key, val, options) {
-      var attr, attrs, unset, changes, silent, changing, prev, current;
-      if (key == null) return this;
-
-      // Handle both `"key", value` and `{key: value}` -style arguments.
-      if (typeof key === 'object') {
-        attrs = key;
-        options = val;
-      } else {
-        (attrs = {})[key] = val;
-      }
-
-      options || (options = {});
-
-      // Run validation.
-      if (!this._validate(attrs, options)) return false;
-
-      // Extract attributes and options.
-      unset           = options.unset;
-      silent          = options.silent;
-      changes         = [];
-      changing        = this._changing;
-      this._changing  = true;
-
-      if (!changing) {
-        this._previousAttributes = _.clone(this.attributes);
-        this.changed = {};
-      }
-      current = this.attributes, prev = this._previousAttributes;
-
-      // Check for changes of `id`.
-      if (this.idAttribute in attrs) this.id = attrs[this.idAttribute];
-
-      // For each `set` attribute, update or delete the current value.
-      for (attr in attrs) {
-        val = attrs[attr];
-        if (!_.isEqual(current[attr], val)) changes.push(attr);
-        if (!_.isEqual(prev[attr], val)) {
-          this.changed[attr] = val;
-        } else {
-          delete this.changed[attr];
-        }
-        unset ? delete current[attr] : current[attr] = val;
-      }
-
-      // Trigger all relevant attribute changes.
-      if (!silent) {
-        if (changes.length) this._pending = options;
-        for (var i = 0, l = changes.length; i < l; i++) {
-          this.trigger('change:' + changes[i], this, current[changes[i]], options);
-        }
-      }
-
-      // You might be wondering why there's a `while` loop here. Changes can
-      // be recursively nested within `"change"` events.
-      if (changing) return this;
-      if (!silent) {
-        while (this._pending) {
-          options = this._pending;
-          this._pending = false;
-          this.trigger('change', this, options);
-        }
-      }
-      this._pending = false;
-      this._changing = false;
-      return this;
-    },
-
-    // Remove an attribute from the model, firing `"change"`. `unset` is a noop
-    // if the attribute doesn't exist.
-    unset: function(attr, options) {
-      return this.set(attr, void 0, _.extend({}, options, {unset: true}));
-    },
-
-    // Clear all attributes on the model, firing `"change"`.
-    clear: function(options) {
-      var attrs = {};
-      for (var key in this.attributes) attrs[key] = void 0;
-      return this.set(attrs, _.extend({}, options, {unset: true}));
-    },
-
-    // Determine if the model has changed since the last `"change"` event.
-    // If you specify an attribute name, determine if that attribute has changed.
-    hasChanged: function(attr) {
-      if (attr == null) return !_.isEmpty(this.changed);
-      return _.has(this.changed, attr);
-    },
-
-    // Return an object containing all the attributes that have changed, or
-    // false if there are no changed attributes. Useful for determining what
-    // parts of a view need to be updated and/or what attributes need to be
-    // persisted to the server. Unset attributes will be set to undefined.
-    // You can also pass an attributes object to diff against the model,
-    // determining if there *would be* a change.
-    changedAttributes: function(diff) {
-      if (!diff) return this.hasChanged() ? _.clone(this.changed) : false;
-      var val, changed = false;
-      var old = this._changing ? this._previousAttributes : this.attributes;
-      for (var attr in diff) {
-        if (_.isEqual(old[attr], (val = diff[attr]))) continue;
-        (changed || (changed = {}))[attr] = val;
-      }
-      return changed;
-    },
-
-    // Get the previous value of an attribute, recorded at the time the last
-    // `"change"` event was fired.
-    previous: function(attr) {
-      if (attr == null || !this._previousAttributes) return null;
-      return this._previousAttributes[attr];
-    },
-
-    // Get all of the attributes of the model at the time of the previous
-    // `"change"` event.
-    previousAttributes: function() {
-      return _.clone(this._previousAttributes);
-    },
-
-    // Fetch the model from the server. If the server's representation of the
-    // model differs from its current attributes, they will be overridden,
-    // triggering a `"change"` event.
-    fetch: function(options) {
-      options = options ? _.clone(options) : {};
-      if (options.parse === void 0) options.parse = true;
-      var model = this;
-      var success = options.success;
-      options.success = function(resp) {
-        if (!model.set(model.parse(resp, options), options)) return false;
-        if (success) success(model, resp, options);
-        model.trigger('sync', model, resp, options);
-      };
-      wrapError(this, options);
-      return this.sync('read', this, options);
-    },
-
-    // Set a hash of model attributes, and sync the model to the server.
-    // If the server returns an attributes hash that differs, the model's
-    // state will be `set` again.
-    save: function(key, val, options) {
-      var attrs, method, xhr, attributes = this.attributes;
-
-      // Handle both `"key", value` and `{key: value}` -style arguments.
-      if (key == null || typeof key === 'object') {
-        attrs = key;
-        options = val;
-      } else {
-        (attrs = {})[key] = val;
-      }
-
-      options = _.extend({validate: true}, options);
-
-      // If we're not waiting and attributes exist, save acts as
-      // `set(attr).save(null, opts)` with validation. Otherwise, check if
-      // the model will be valid when the attributes, if any, are set.
-      if (attrs && !options.wait) {
-        if (!this.set(attrs, options)) return false;
-      } else {
-        if (!this._validate(attrs, options)) return false;
-      }
-
-      // Set temporary attributes if `{wait: true}`.
-      if (attrs && options.wait) {
-        this.attributes = _.extend({}, attributes, attrs);
-      }
-
-      // After a successful server-side save, the client is (optionally)
-      // updated with the server-side state.
-      if (options.parse === void 0) options.parse = true;
-      var model = this;
-      var success = options.success;
-      options.success = function(resp) {
-        // Ensure attributes are restored during synchronous saves.
-        model.attributes = attributes;
-        var serverAttrs = model.parse(resp, options);
-        if (options.wait) serverAttrs = _.extend(attrs || {}, serverAttrs);
-        if (_.isObject(serverAttrs) && !model.set(serverAttrs, options)) {
-          return false;
-        }
-        if (success) success(model, resp, options);
-        model.trigger('sync', model, resp, options);
-      };
-      wrapError(this, options);
-
-      method = this.isNew() ? 'create' : (options.patch ? 'patch' : 'update');
-      if (method === 'patch') options.attrs = attrs;
-      xhr = this.sync(method, this, options);
-
-      // Restore attributes.
-      if (attrs && options.wait) this.attributes = attributes;
-
-      return xhr;
-    },
-
-    // Destroy this model on the server if it was already persisted.
-    // Optimistically removes the model from its collection, if it has one.
-    // If `wait: true` is passed, waits for the server to respond before removal.
-    destroy: function(options) {
-      options = options ? _.clone(options) : {};
-      var model = this;
-      var success = options.success;
-
-      var destroy = function() {
-        model.trigger('destroy', model, model.collection, options);
-      };
-
-      options.success = function(resp) {
-        if (options.wait || model.isNew()) destroy();
-        if (success) success(model, resp, options);
-        if (!model.isNew()) model.trigger('sync', model, resp, options);
-      };
-
-      if (this.isNew()) {
-        options.success();
-        return false;
-      }
-      wrapError(this, options);
-
-      var xhr = this.sync('delete', this, options);
-      if (!options.wait) destroy();
-      return xhr;
-    },
-
-    // Default URL for the model's representation on the server -- if you're
-    // using Backbone's restful methods, override this to change the endpoint
-    // that will be called.
-    url: function() {
-      var base =
-        _.result(this, 'urlRoot') ||
-        _.result(this.collection, 'url') ||
-        urlError();
-      if (this.isNew()) return base;
-      return base.replace(/([^\/])$/, '$1/') + encodeURIComponent(this.id);
-    },
-
-    // **parse** converts a response into the hash of attributes to be `set` on
-    // the model. The default implementation is just to pass the response along.
-    parse: function(resp, options) {
-      return resp;
-    },
-
-    // Create a new model with identical attributes to this one.
-    clone: function() {
-      return new this.constructor(this.attributes);
-    },
-
-    // A model is new if it has never been saved to the server, and lacks an id.
-    isNew: function() {
-      return !this.has(this.idAttribute);
-    },
-
-    // Check if the model is currently in a valid state.
-    isValid: function(options) {
-      return this._validate({}, _.extend(options || {}, { validate: true }));
-    },
-
-    // Run validation against the next complete set of model attributes,
-    // returning `true` if all is well. Otherwise, fire an `"invalid"` event.
-    _validate: function(attrs, options) {
-      if (!options.validate || !this.validate) return true;
-      attrs = _.extend({}, this.attributes, attrs);
-      var error = this.validationError = this.validate(attrs, options) || null;
-      if (!error) return true;
-      this.trigger('invalid', this, error, _.extend(options, {validationError: error}));
-      return false;
-    }
-
-  });
-
-  // Underscore methods that we want to implement on the Model.
-  var modelMethods = ['keys', 'values', 'pairs', 'invert', 'pick', 'omit'];
-
-  // Mix in each Underscore method as a proxy to `Model#attributes`.
-  _.each(modelMethods, function(method) {
-    Model.prototype[method] = function() {
-      var args = slice.call(arguments);
-      args.unshift(this.attributes);
-      return _[method].apply(_, args);
-    };
-  });
-
-  // Backbone.Collection
-  // -------------------
-
-  // If models tend to represent a single row of data, a Backbone Collection is
-  // more analagous to a table full of data ... or a small slice or page of that
-  // table, or a collection of rows that belong together for a particular reason
-  // -- all of the messages in this particular folder, all of the documents
-  // belonging to this particular author, and so on. Collections maintain
-  // indexes of their models, both in order, and for lookup by `id`.
-
-  // Create a new **Collection**, perhaps to contain a specific type of `model`.
-  // If a `comparator` is specified, the Collection will maintain
-  // its models in sort order, as they're added and removed.
-  var Collection = Backbone.Collection = function(models, options) {
-    options || (options = {});
-    if (options.model) this.model = options.model;
-    if (options.comparator !== void 0) this.comparator = options.comparator;
-    this._reset();
-    this.initialize.apply(this, arguments);
-    if (models) this.reset(models, _.extend({silent: true}, options));
-  };
-
-  // Default options for `Collection#set`.
-  var setOptions = {add: true, remove: true, merge: true};
-  var addOptions = {add: true, remove: false};
-
-  // Define the Collection's inheritable methods.
-  _.extend(Collection.prototype, Events, {
-
-    // The default model for a collection is just a **Backbone.Model**.
-    // This should be overridden in most cases.
-    model: Model,
-
-    // Initialize is an empty function by default. Override it with your own
-    // initialization logic.
-    initialize: function(){},
-
-    // The JSON representation of a Collection is an array of the
-    // models' attributes.
-    toJSON: function(options) {
-      return this.map(function(model){ return model.toJSON(options); });
-    },
-
-    // Proxy `Backbone.sync` by default.
-    sync: function() {
-      return Backbone.sync.apply(this, arguments);
-    },
-
-    // Add a model, or list of models to the set.
-    add: function(models, options) {
-      return this.set(models, _.extend({merge: false}, options, addOptions));
-    },
-
-    // Remove a model, or a list of models from the set.
-    remove: function(models, options) {
-      var singular = !_.isArray(models);
-      models = singular ? [models] : _.clone(models);
-      options || (options = {});
-      var i, l, index, model;
-      for (i = 0, l = models.length; i < l; i++) {
-        model = models[i] = this.get(models[i]);
-        if (!model) continue;
-        delete this._byId[model.id];
-        delete this._byId[model.cid];
-        index = this.indexOf(model);
-        this.models.splice(index, 1);
-        this.length--;
-        if (!options.silent) {
-          options.index = index;
-          model.trigger('remove', model, this, options);
-        }
-        this._removeReference(model, options);
-      }
-      return singular ? models[0] : models;
-    },
-
-    // Update a collection by `set`-ing a new list of models, adding new ones,
-    // removing models that are no longer present, and merging models that
-    // already exist in the collection, as necessary. Similar to **Model#set**,
-    // the core operation for updating the data contained by the collection.
-    set: function(models, options) {
-      options = _.defaults({}, options, setOptions);
-      if (options.parse) models = this.parse(models, options);
-      var singular = !_.isArray(models);
-      models = singular ? (models ? [models] : []) : _.clone(models);
-      var i, l, id, model, attrs, existing, sort;
-      var at = options.at;
-      var targetModel = this.model;
-      var sortable = this.comparator && (at == null) && options.sort !== false;
-      var sortAttr = _.isString(this.comparator) ? this.comparator : null;
-      var toAdd = [], toRemove = [], modelMap = {};
-      var add = options.add, merge = options.merge, remove = options.remove;
-      var order = !sortable && add && remove ? [] : false;
-
-      // Turn bare objects into model references, and prevent invalid models
-      // from being added.
-      for (i = 0, l = models.length; i < l; i++) {
-        attrs = models[i] || {};
-        if (attrs instanceof Model) {
-          id = model = attrs;
-        } else {
-          id = attrs[targetModel.prototype.idAttribute || 'id'];
-        }
-
-        // If a duplicate is found, prevent it from being added and
-        // optionally merge it into the existing model.
-        if (existing = this.get(id)) {
-          if (remove) modelMap[existing.cid] = true;
-          if (merge) {
-            attrs = attrs === model ? model.attributes : attrs;
-            if (options.parse) attrs = existing.parse(attrs, options);
-            existing.set(attrs, options);
-            if (sortable && !sort && existing.hasChanged(sortAttr)) sort = true;
-          }
-          models[i] = existing;
-
-        // If this is a new, valid model, push it to the `toAdd` list.
-        } else if (add) {
-          model = models[i] = this._prepareModel(attrs, options);
-          if (!model) continue;
-          toAdd.push(model);
-          this._addReference(model, options);
-        }
-
-        // Do not add multiple models with the same `id`.
-        model = existing || model;
-        if (order && (model.isNew() || !modelMap[model.id])) order.push(model);
-        modelMap[model.id] = true;
-      }
-
-      // Remove nonexistent models if appropriate.
-      if (remove) {
-        for (i = 0, l = this.length; i < l; ++i) {
-          if (!modelMap[(model = this.models[i]).cid]) toRemove.push(model);
-        }
-        if (toRemove.length) this.remove(toRemove, options);
-      }
-
-      // See if sorting is needed, update `length` and splice in new models.
-      if (toAdd.length || (order && order.length)) {
-        if (sortable) sort = true;
-        this.length += toAdd.length;
-        if (at != null) {
-          for (i = 0, l = toAdd.length; i < l; i++) {
-            this.models.splice(at + i, 0, toAdd[i]);
-          }
-        } else {
-          if (order) this.models.length = 0;
-          var orderedModels = order || toAdd;
-          for (i = 0, l = orderedModels.length; i < l; i++) {
-            this.models.push(orderedModels[i]);
-          }
-        }
-      }
-
-      // Silently sort the collection if appropriate.
-      if (sort) this.sort({silent: true});
-
-      // Unless silenced, it's time to fire all appropriate add/sort events.
-      if (!options.silent) {
-        for (i = 0, l = toAdd.length; i < l; i++) {
-          (model = toAdd[i]).trigger('add', model, this, options);
-        }
-        if (sort || (order && order.length)) this.trigger('sort', this, options);
-      }
-
-      // Return the added (or merged) model (or models).
-      return singular ? models[0] : models;
-    },
-
-    // When you have more items than you want to add or remove individually,
-    // you can reset the entire set with a new list of models, without firing
-    // any granular `add` or `remove` events. Fires `reset` when finished.
-    // Useful for bulk operations and optimizations.
-    reset: function(models, options) {
-      options || (options = {});
-      for (var i = 0, l = this.models.length; i < l; i++) {
-        this._removeReference(this.models[i], options);
-      }
-      options.previousModels = this.models;
-      this._reset();
-      models = this.add(models, _.extend({silent: true}, options));
-      if (!options.silent) this.trigger('reset', this, options);
-      return models;
-    },
-
-    // Add a model to the end of the collection.
-    push: function(model, options) {
-      return this.add(model, _.extend({at: this.length}, options));
-    },
-
-    // Remove a model from the end of the collection.
-    pop: function(options) {
-      var model = this.at(this.length - 1);
-      this.remove(model, options);
-      return model;
-    },
-
-    // Add a model to the beginning of the collection.
-    unshift: function(model, options) {
-      return this.add(model, _.extend({at: 0}, options));
-    },
-
-    // Remove a model from the beginning of the collection.
-    shift: function(options) {
-      var model = this.at(0);
-      this.remove(model, options);
-      return model;
-    },
-
-    // Slice out a sub-array of models from the collection.
-    slice: function() {
-      return slice.apply(this.models, arguments);
-    },
-
-    // Get a model from the set by id.
-    get: function(obj) {
-      if (obj == null) return void 0;
-      return this._byId[obj] || this._byId[obj.id] || this._byId[obj.cid];
-    },
-
-    // Get the model at the given index.
-    at: function(index) {
-      return this.models[index];
-    },
-
-    // Return models with matching attributes. Useful for simple cases of
-    // `filter`.
-    where: function(attrs, first) {
-      if (_.isEmpty(attrs)) return first ? void 0 : [];
-      return this[first ? 'find' : 'filter'](function(model) {
-        for (var key in attrs) {
-          if (attrs[key] !== model.get(key)) return false;
-        }
-        return true;
-      });
-    },
-
-    // Return the first model with matching attributes. Useful for simple cases
-    // of `find`.
-    findWhere: function(attrs) {
-      return this.where(attrs, true);
-    },
-
-    // Force the collection to re-sort itself. You don't need to call this under
-    // normal circumstances, as the set will maintain sort order as each item
-    // is added.
-    sort: function(options) {
-      if (!this.comparator) throw new Error('Cannot sort a set without a comparator');
-      options || (options = {});
-
-      // Run sort based on type of `comparator`.
-      if (_.isString(this.comparator) || this.comparator.length === 1) {
-        this.models = this.sortBy(this.comparator, this);
-      } else {
-        this.models.sort(_.bind(this.comparator, this));
-      }
-
-      if (!options.silent) this.trigger('sort', this, options);
-      return this;
-    },
-
-    // Pluck an attribute from each model in the collection.
-    pluck: function(attr) {
-      return _.invoke(this.models, 'get', attr);
-    },
-
-    // Fetch the default set of models for this collection, resetting the
-    // collection when they arrive. If `reset: true` is passed, the response
-    // data will be passed through the `reset` method instead of `set`.
-    fetch: function(options) {
-      options = options ? _.clone(options) : {};
-      if (options.parse === void 0) options.parse = true;
-      var success = options.success;
-      var collection = this;
-      options.success = function(resp) {
-        var method = options.reset ? 'reset' : 'set';
-        collection[method](resp, options);
-        if (success) success(collection, resp, options);
-        collection.trigger('sync', collection, resp, options);
-      };
-      wrapError(this, options);
-      return this.sync('read', this, options);
-    },
-
-    // Create a new instance of a model in this collection. Add the model to the
-    // collection immediately, unless `wait: true` is passed, in which case we
-    // wait for the server to agree.
-    create: function(model, options) {
-      options = options ? _.clone(options) : {};
-      if (!(model = this._prepareModel(model, options))) return false;
-      if (!options.wait) this.add(model, options);
-      var collection = this;
-      var success = options.success;
-      options.success = function(model, resp) {
-        if (options.wait) collection.add(model, options);
-        if (success) success(model, resp, options);
-      };
-      model.save(null, options);
-      return model;
-    },
-
-    // **parse** converts a response into a list of models to be added to the
-    // collection. The default implementation is just to pass it through.
-    parse: function(resp, options) {
-      return resp;
-    },
-
-    // Create a new collection with an identical list of models as this one.
-    clone: function() {
-      return new this.constructor(this.models);
-    },
-
-    // Private method to reset all internal state. Called when the collection
-    // is first initialized or reset.
-    _reset: function() {
-      this.length = 0;
-      this.models = [];
-      this._byId  = {};
-    },
-
-    // Prepare a hash of attributes (or other model) to be added to this
-    // collection.
-    _prepareModel: function(attrs, options) {
-      if (attrs instanceof Model) return attrs;
-      options = options ? _.clone(options) : {};
-      options.collection = this;
-      var model = new this.model(attrs, options);
-      if (!model.validationError) return model;
-      this.trigger('invalid', this, model.validationError, options);
-      return false;
-    },
-
-    // Internal method to create a model's ties to a collection.
-    _addReference: function(model, options) {
-      this._byId[model.cid] = model;
-      if (model.id != null) this._byId[model.id] = model;
-      if (!model.collection) model.collection = this;
-      model.on('all', this._onModelEvent, this);
-    },
-
-    // Internal method to sever a model's ties to a collection.
-    _removeReference: function(model, options) {
-      if (this === model.collection) delete model.collection;
-      model.off('all', this._onModelEvent, this);
-    },
-
-    // Internal method called every time a model in the set fires an event.
-    // Sets need to update their indexes when models change ids. All other
-    // events simply proxy through. "add" and "remove" events that originate
-    // in other collections are ignored.
-    _onModelEvent: function(event, model, collection, options) {
-      if ((event === 'add' || event === 'remove') && collection !== this) return;
-      if (event === 'destroy') this.remove(model, options);
-      if (model && event === 'change:' + model.idAttribute) {
-        delete this._byId[model.previous(model.idAttribute)];
-        if (model.id != null) this._byId[model.id] = model;
-      }
-      this.trigger.apply(this, arguments);
-    }
-
-  });
-
-  // Underscore methods that we want to implement on the Collection.
-  // 90% of the core usefulness of Backbone Collections is actually implemented
-  // right here:
-  var methods = ['forEach', 'each', 'map', 'collect', 'reduce', 'foldl',
-    'inject', 'reduceRight', 'foldr', 'find', 'detect', 'filter', 'select',
-    'reject', 'every', 'all', 'some', 'any', 'include', 'contains', 'invoke',
-    'max', 'min', 'toArray', 'size', 'first', 'head', 'take', 'initial', 'rest',
-    'tail', 'drop', 'last', 'without', 'difference', 'indexOf', 'shuffle',
-    'lastIndexOf', 'isEmpty', 'chain', 'sample'];
-
-  // Mix in each Underscore method as a proxy to `Collection#models`.
-  _.each(methods, function(method) {
-    Collection.prototype[method] = function() {
-      var args = slice.call(arguments);
-      args.unshift(this.models);
-      return _[method].apply(_, args);
-    };
-  });
-
-  // Underscore methods that take a property name as an argument.
-  var attributeMethods = ['groupBy', 'countBy', 'sortBy', 'indexBy'];
-
-  // Use attributes instead of properties.
-  _.each(attributeMethods, function(method) {
-    Collection.prototype[method] = function(value, context) {
-      var iterator = _.isFunction(value) ? value : function(model) {
-        return model.get(value);
-      };
-      return _[method](this.models, iterator, context);
-    };
-  });
-
-  // Backbone.View
-  // -------------
-
-  // Backbone Views are almost more convention than they are actual code. A View
-  // is simply a JavaScript object that represents a logical chunk of UI in the
-  // DOM. This might be a single item, an entire list, a sidebar or panel, or
-  // even the surrounding frame which wraps your whole app. Defining a chunk of
-  // UI as a **View** allows you to define your DOM events declaratively, without
-  // having to worry about render order ... and makes it easy for the view to
-  // react to specific changes in the state of your models.
-
-  // Creating a Backbone.View creates its initial element outside of the DOM,
-  // if an existing element is not provided...
-  var View = Backbone.View = function(options) {
-    this.cid = _.uniqueId('view');
-    options || (options = {});
-    _.extend(this, _.pick(options, viewOptions));
-    this._ensureElement();
-    this.initialize.apply(this, arguments);
-    this.delegateEvents();
-  };
-
-  // Cached regex to split keys for `delegate`.
-  var delegateEventSplitter = /^(\S+)\s*(.*)$/;
-
-  // List of view options to be merged as properties.
-  var viewOptions = ['model', 'collection', 'el', 'id', 'attributes', 'className', 'tagName', 'events'];
-
-  // Set up all inheritable **Backbone.View** properties and methods.
-  _.extend(View.prototype, Events, {
-
-    // The default `tagName` of a View's element is `"div"`.
-    tagName: 'div',
-
-    // jQuery delegate for element lookup, scoped to DOM elements within the
-    // current view. This should be preferred to global lookups where possible.
-    $: function(selector) {
-      return this.$el.find(selector);
-    },
-
-    // Initialize is an empty function by default. Override it with your own
-    // initialization logic.
-    initialize: function(){},
-
-    // **render** is the core function that your view should override, in order
-    // to populate its element (`this.el`), with the appropriate HTML. The
-    // convention is for **render** to always return `this`.
-    render: function() {
-      return this;
-    },
-
-    // Remove this view by taking the element out of the DOM, and removing any
-    // applicable Backbone.Events listeners.
-    remove: function() {
-      this.$el.remove();
-      this.stopListening();
-      return this;
-    },
-
-    // Change the view's element (`this.el` property), including event
-    // re-delegation.
-    setElement: function(element, delegate) {
-      if (this.$el) this.undelegateEvents();
-      this.$el = element instanceof Backbone.$ ? element : Backbone.$(element);
-      this.el = this.$el[0];
-      if (delegate !== false) this.delegateEvents();
-      return this;
-    },
-
-    // Set callbacks, where `this.events` is a hash of
-    //
-    // *{"event selector": "callback"}*
-    //
-    //     {
-    //       'mousedown .title':  'edit',
-    //       'click .button':     'save',
-    //       'click .open':       function(e) { ... }
-    //     }
-    //
-    // pairs. Callbacks will be bound to the view, with `this` set properly.
-    // Uses event delegation for efficiency.
-    // Omitting the selector binds the event to `this.el`.
-    // This only works for delegate-able events: not `focus`, `blur`, and
-    // not `change`, `submit`, and `reset` in Internet Explorer.
-    delegateEvents: function(events) {
-      if (!(events || (events = _.result(this, 'events')))) return this;
-      this.undelegateEvents();
-      for (var key in events) {
-        var method = events[key];
-        if (!_.isFunction(method)) method = this[events[key]];
-        if (!method) continue;
-
-        var match = key.match(delegateEventSplitter);
-        var eventName = match[1], selector = match[2];
-        method = _.bind(method, this);
-        eventName += '.delegateEvents' + this.cid;
-        if (selector === '') {
-          this.$el.on(eventName, method);
-        } else {
-          this.$el.on(eventName, selector, method);
-        }
-      }
-      return this;
-    },
-
-    // Clears all callbacks previously bound to the view with `delegateEvents`.
-    // You usually don't need to use this, but may wish to if you have multiple
-    // Backbone views attached to the same DOM element.
-    undelegateEvents: function() {
-      this.$el.off('.delegateEvents' + this.cid);
-      return this;
-    },
-
-    // Ensure that the View has a DOM element to render into.
-    // If `this.el` is a string, pass it through `$()`, take the first
-    // matching element, and re-assign it to `el`. Otherwise, create
-    // an element from the `id`, `className` and `tagName` properties.
-    _ensureElement: function() {
-      if (!this.el) {
-        var attrs = _.extend({}, _.result(this, 'attributes'));
-        if (this.id) attrs.id = _.result(this, 'id');
-        if (this.className) attrs['class'] = _.result(this, 'className');
-        var $el = Backbone.$('<' + _.result(this, 'tagName') + '>').attr(attrs);
-        this.setElement($el, false);
-      } else {
-        this.setElement(_.result(this, 'el'), false);
-      }
-    }
-
-  });
-
-  // Backbone.sync
-  // -------------
-
-  // Override this function to change the manner in which Backbone persists
-  // models to the server. You will be passed the type of request, and the
-  // model in question. By default, makes a RESTful Ajax request
-  // to the model's `url()`. Some possible customizations could be:
-  //
-  // * Use `setTimeout` to batch rapid-fire updates into a single request.
-  // * Send up the models as XML instead of JSON.
-  // * Persist models via WebSockets instead of Ajax.
-  //
-  // Turn on `Backbone.emulateHTTP` in order to send `PUT` and `DELETE` requests
-  // as `POST`, with a `_method` parameter containing the true HTTP method,
-  // as well as all requests with the body as `application/x-www-form-urlencoded`
-  // instead of `application/json` with the model in a param named `model`.
-  // Useful when interfacing with server-side languages like **PHP** that make
-  // it difficult to read the body of `PUT` requests.
-  Backbone.sync = function(method, model, options) {
-    var type = methodMap[method];
-
-    // Default options, unless specified.
-    _.defaults(options || (options = {}), {
-      emulateHTTP: Backbone.emulateHTTP,
-      emulateJSON: Backbone.emulateJSON
-    });
-
-    // Default JSON-request options.
-    var params = {type: type, dataType: 'json'};
-
-    // Ensure that we have a URL.
-    if (!options.url) {
-      params.url = _.result(model, 'url') || urlError();
-    }
-
-    // Ensure that we have the appropriate request data.
-    if (options.data == null && model && (method === 'create' || method === 'update' || method === 'patch')) {
-      params.contentType = 'application/json';
-      params.data = JSON.stringify(options.attrs || model.toJSON(options));
-    }
-
-    // For older servers, emulate JSON by encoding the request into an HTML-form.
-    if (options.emulateJSON) {
-      params.contentType = 'application/x-www-form-urlencoded';
-      params.data = params.data ? {model: params.data} : {};
-    }
-
-    // For older servers, emulate HTTP by mimicking the HTTP method with `_method`
-    // And an `X-HTTP-Method-Override` header.
-    if (options.emulateHTTP && (type === 'PUT' || type === 'DELETE' || type === 'PATCH')) {
-      params.type = 'POST';
-      if (options.emulateJSON) params.data._method = type;
-      var beforeSend = options.beforeSend;
-      options.beforeSend = function(xhr) {
-        xhr.setRequestHeader('X-HTTP-Method-Override', type);
-        if (beforeSend) return beforeSend.apply(this, arguments);
-      };
-    }
-
-    // Don't process data on a non-GET request.
-    if (params.type !== 'GET' && !options.emulateJSON) {
-      params.processData = false;
-    }
-
-    // If we're sending a `PATCH` request, and we're in an old Internet Explorer
-    // that still has ActiveX enabled by default, override jQuery to use that
-    // for XHR instead. Remove this line when jQuery supports `PATCH` on IE8.
-    if (params.type === 'PATCH' && noXhrPatch) {
-      params.xhr = function() {
-        return new ActiveXObject("Microsoft.XMLHTTP");
-      };
-    }
-
-    // Make the request, allowing the user to override any Ajax options.
-    var xhr = options.xhr = Backbone.ajax(_.extend(params, options));
-    model.trigger('request', model, xhr, options);
-    return xhr;
-  };
-
-  var noXhrPatch =
-    typeof window !== 'undefined' && !!window.ActiveXObject &&
-      !(window.XMLHttpRequest && (new XMLHttpRequest).dispatchEvent);
-
-  // Map from CRUD to HTTP for our default `Backbone.sync` implementation.
-  var methodMap = {
-    'create': 'POST',
-    'update': 'PUT',
-    'patch':  'PATCH',
-    'delete': 'DELETE',
-    'read':   'GET'
-  };
-
-  // Set the default implementation of `Backbone.ajax` to proxy through to `$`.
-  // Override this if you'd like to use a different library.
-  Backbone.ajax = function() {
-    return Backbone.$.ajax.apply(Backbone.$, arguments);
-  };
-
-  // Backbone.Router
-  // ---------------
-
-  // Routers map faux-URLs to actions, and fire events when routes are
-  // matched. Creating a new one sets its `routes` hash, if not set statically.
-  var Router = Backbone.Router = function(options) {
-    options || (options = {});
-    if (options.routes) this.routes = options.routes;
-    this._bindRoutes();
-    this.initialize.apply(this, arguments);
-  };
-
-  // Cached regular expressions for matching named param parts and splatted
-  // parts of route strings.
-  var optionalParam = /\((.*?)\)/g;
-  var namedParam    = /(\(\?)?:\w+/g;
-  var splatParam    = /\*\w+/g;
-  var escapeRegExp  = /[\-{}\[\]+?.,\\\^$|#\s]/g;
-
-  // Set up all inheritable **Backbone.Router** properties and methods.
-  _.extend(Router.prototype, Events, {
-
-    // Initialize is an empty function by default. Override it with your own
-    // initialization logic.
-    initialize: function(){},
-
-    // Manually bind a single named route to a callback. For example:
-    //
-    //     this.route('search/:query/p:num', 'search', function(query, num) {
-    //       ...
-    //     });
-    //
-    route: function(route, name, callback) {
-      if (!_.isRegExp(route)) route = this._routeToRegExp(route);
-      if (_.isFunction(name)) {
-        callback = name;
-        name = '';
-      }
-      if (!callback) callback = this[name];
-      var router = this;
-      Backbone.history.route(route, function(fragment) {
-        var args = router._extractParameters(route, fragment);
-        router.execute(callback, args);
-        router.trigger.apply(router, ['route:' + name].concat(args));
-        router.trigger('route', name, args);
-        Backbone.history.trigger('route', router, name, args);
-      });
-      return this;
-    },
-
-    // Execute a route handler with the provided parameters.  This is an
-    // excellent place to do pre-route setup or post-route cleanup.
-    execute: function(callback, args) {
-      if (callback) callback.apply(this, args);
-    },
-
-    // Simple proxy to `Backbone.history` to save a fragment into the history.
-    navigate: function(fragment, options) {
-      Backbone.history.navigate(fragment, options);
-      return this;
-    },
-
-    // Bind all defined routes to `Backbone.history`. We have to reverse the
-    // order of the routes here to support behavior where the most general
-    // routes can be defined at the bottom of the route map.
-    _bindRoutes: function() {
-      if (!this.routes) return;
-      this.routes = _.result(this, 'routes');
-      var route, routes = _.keys(this.routes);
-      while ((route = routes.pop()) != null) {
-        this.route(route, this.routes[route]);
-      }
-    },
-
-    // Convert a route string into a regular expression, suitable for matching
-    // against the current location hash.
-    _routeToRegExp: function(route) {
-      route = route.replace(escapeRegExp, '\\$&')
-                   .replace(optionalParam, '(?:$1)?')
-                   .replace(namedParam, function(match, optional) {
-                     return optional ? match : '([^/?]+)';
-                   })
-                   .replace(splatParam, '([^?]*?)');
-      return new RegExp('^' + route + '(?:\\?([\\s\\S]*))?$');
-    },
-
-    // Given a route, and a URL fragment that it matches, return the array of
-    // extracted decoded parameters. Empty or unmatched parameters will be
-    // treated as `null` to normalize cross-browser behavior.
-    _extractParameters: function(route, fragment) {
-      var params = route.exec(fragment).slice(1);
-      return _.map(params, function(param, i) {
-        // Don't decode the search params.
-        if (i === params.length - 1) return param || null;
-        return param ? decodeURIComponent(param) : null;
-      });
-    }
-
-  });
-
-  // Backbone.History
-  // ----------------
-
-  // Handles cross-browser history management, based on either
-  // [pushState](http://diveintohtml5.info/history.html) and real URLs, or
-  // [onhashchange](https://developer.mozilla.org/en-US/docs/DOM/window.onhashchange)
-  // and URL fragments. If the browser supports neither (old IE, natch),
-  // falls back to polling.
-  var History = Backbone.History = function() {
-    this.handlers = [];
-    _.bindAll(this, 'checkUrl');
-
-    // Ensure that `History` can be used outside of the browser.
-    if (typeof window !== 'undefined') {
-      this.location = window.location;
-      this.history = window.history;
-    }
-  };
-
-  // Cached regex for stripping a leading hash/slash and trailing space.
-  var routeStripper = /^[#\/]|\s+$/g;
-
-  // Cached regex for stripping leading and trailing slashes.
-  var rootStripper = /^\/+|\/+$/g;
-
-  // Cached regex for detecting MSIE.
-  var isExplorer = /msie [\w.]+/;
-
-  // Cached regex for removing a trailing slash.
-  var trailingSlash = /\/$/;
-
-  // Cached regex for stripping urls of hash.
-  var pathStripper = /#.*$/;
-
-  // Has the history handling already been started?
-  History.started = false;
-
-  // Set up all inheritable **Backbone.History** properties and methods.
-  _.extend(History.prototype, Events, {
-
-    // The default interval to poll for hash changes, if necessary, is
-    // twenty times a second.
-    interval: 50,
-
-    // Are we at the app root?
-    atRoot: function() {
-      return this.location.pathname.replace(/[^\/]$/, '$&/') === this.root;
-    },
-
-    // Gets the true hash value. Cannot use location.hash directly due to bug
-    // in Firefox where location.hash will always be decoded.
-    getHash: function(window) {
-      var match = (window || this).location.href.match(/#(.*)$/);
-      return match ? match[1] : '';
-    },
-
-    // Get the cross-browser normalized URL fragment, either from the URL,
-    // the hash, or the override.
-    getFragment: function(fragment, forcePushState) {
-      if (fragment == null) {
-        if (this._hasPushState || !this._wantsHashChange || forcePushState) {
-          fragment = decodeURI(this.location.pathname + this.location.search);
-          var root = this.root.replace(trailingSlash, '');
-          if (!fragment.indexOf(root)) fragment = fragment.slice(root.length);
-        } else {
-          fragment = this.getHash();
-        }
-      }
-      return fragment.replace(routeStripper, '');
-    },
-
-    // Start the hash change handling, returning `true` if the current URL matches
-    // an existing route, and `false` otherwise.
-    start: function(options) {
-      if (History.started) throw new Error("Backbone.history has already been started");
-      History.started = true;
-
-      // Figure out the initial configuration. Do we need an iframe?
-      // Is pushState desired ... is it available?
-      this.options          = _.extend({root: '/'}, this.options, options);
-      this.root             = this.options.root;
-      this._wantsHashChange = this.options.hashChange !== false;
-      this._wantsPushState  = !!this.options.pushState;
-      this._hasPushState    = !!(this.options.pushState && this.history && this.history.pushState);
-      var fragment          = this.getFragment();
-      var docMode           = document.documentMode;
-      var oldIE             = (isExplorer.exec(navigator.userAgent.toLowerCase()) && (!docMode || docMode <= 7));
-
-      // Normalize root to always include a leading and trailing slash.
-      this.root = ('/' + this.root + '/').replace(rootStripper, '/');
-
-      if (oldIE && this._wantsHashChange) {
-        var frame = Backbone.$('<iframe src="javascript:0" tabindex="-1">');
-        this.iframe = frame.hide().appendTo('body')[0].contentWindow;
-        this.navigate(fragment);
-      }
-
-      // Depending on whether we're using pushState or hashes, and whether
-      // 'onhashchange' is supported, determine how we check the URL state.
-      if (this._hasPushState) {
-        Backbone.$(window).on('popstate', this.checkUrl);
-      } else if (this._wantsHashChange && ('onhashchange' in window) && !oldIE) {
-        Backbone.$(window).on('hashchange', this.checkUrl);
-      } else if (this._wantsHashChange) {
-        this._checkUrlInterval = setInterval(this.checkUrl, this.interval);
-      }
-
-      // Determine if we need to change the base url, for a pushState link
-      // opened by a non-pushState browser.
-      this.fragment = fragment;
-      var loc = this.location;
-
-      // Transition from hashChange to pushState or vice versa if both are
-      // requested.
-      if (this._wantsHashChange && this._wantsPushState) {
-
-        // If we've started off with a route from a `pushState`-enabled
-        // browser, but we're currently in a browser that doesn't support it...
-        if (!this._hasPushState && !this.atRoot()) {
-          this.fragment = this.getFragment(null, true);
-          this.location.replace(this.root + '#' + this.fragment);
-          // Return immediately as browser will do redirect to new url
-          return true;
-
-        // Or if we've started out with a hash-based route, but we're currently
-        // in a browser where it could be `pushState`-based instead...
-        } else if (this._hasPushState && this.atRoot() && loc.hash) {
-          this.fragment = this.getHash().replace(routeStripper, '');
-          this.history.replaceState({}, document.title, this.root + this.fragment);
-        }
-
-      }
-
-      if (!this.options.silent) return this.loadUrl();
-    },
-
-    // Disable Backbone.history, perhaps temporarily. Not useful in a real app,
-    // but possibly useful for unit testing Routers.
-    stop: function() {
-      Backbone.$(window).off('popstate', this.checkUrl).off('hashchange', this.checkUrl);
-      if (this._checkUrlInterval) clearInterval(this._checkUrlInterval);
-      History.started = false;
-    },
-
-    // Add a route to be tested when the fragment changes. Routes added later
-    // may override previous routes.
-    route: function(route, callback) {
-      this.handlers.unshift({route: route, callback: callback});
-    },
-
-    // Checks the current URL to see if it has changed, and if it has,
-    // calls `loadUrl`, normalizing across the hidden iframe.
-    checkUrl: function(e) {
-      var current = this.getFragment();
-      if (current === this.fragment && this.iframe) {
-        current = this.getFragment(this.getHash(this.iframe));
-      }
-      if (current === this.fragment) return false;
-      if (this.iframe) this.navigate(current);
-      this.loadUrl();
-    },
-
-    // Attempt to load the current URL fragment. If a route succeeds with a
-    // match, returns `true`. If no defined routes matches the fragment,
-    // returns `false`.
-    loadUrl: function(fragment) {
-      fragment = this.fragment = this.getFragment(fragment);
-      return _.any(this.handlers, function(handler) {
-        if (handler.route.test(fragment)) {
-          handler.callback(fragment);
-          return true;
-        }
-      });
-    },
-
-    // Save a fragment into the hash history, or replace the URL state if the
-    // 'replace' option is passed. You are responsible for properly URL-encoding
-    // the fragment in advance.
-    //
-    // The options object can contain `trigger: true` if you wish to have the
-    // route callback be fired (not usually desirable), or `replace: true`, if
-    // you wish to modify the current URL without adding an entry to the history.
-    navigate: function(fragment, options) {
-      if (!History.started) return false;
-      if (!options || options === true) options = {trigger: !!options};
-
-      var url = this.root + (fragment = this.getFragment(fragment || ''));
-
-      // Strip the hash for matching.
-      fragment = fragment.replace(pathStripper, '');
-
-      if (this.fragment === fragment) return;
-      this.fragment = fragment;
-
-      // Don't include a trailing slash on the root.
-      if (fragment === '' && url !== '/') url = url.slice(0, -1);
-
-      // If pushState is available, we use it to set the fragment as a real URL.
-      if (this._hasPushState) {
-        this.history[options.replace ? 'replaceState' : 'pushState']({}, document.title, url);
-
-      // If hash changes haven't been explicitly disabled, update the hash
-      // fragment to store history.
-      } else if (this._wantsHashChange) {
-        this._updateHash(this.location, fragment, options.replace);
-        if (this.iframe && (fragment !== this.getFragment(this.getHash(this.iframe)))) {
-          // Opening and closing the iframe tricks IE7 and earlier to push a
-          // history entry on hash-tag change.  When replace is true, we don't
-          // want this.
-          if(!options.replace) this.iframe.document.open().close();
-          this._updateHash(this.iframe.location, fragment, options.replace);
-        }
-
-      // If you've told us that you explicitly don't want fallback hashchange-
-      // based history, then `navigate` becomes a page refresh.
-      } else {
-        return this.location.assign(url);
-      }
-      if (options.trigger) return this.loadUrl(fragment);
-    },
-
-    // Update the hash location, either replacing the current entry, or adding
-    // a new one to the browser history.
-    _updateHash: function(location, fragment, replace) {
-      if (replace) {
-        var href = location.href.replace(/(javascript:|#).*$/, '');
-        location.replace(href + '#' + fragment);
-      } else {
-        // Some browsers require that `hash` contains a leading #.
-        location.hash = '#' + fragment;
-      }
-    }
-
-  });
-
-  // Create the default Backbone.history.
-  Backbone.history = new History;
-
-  // Helpers
-  // -------
-
-  // Helper function to correctly set up the prototype chain, for subclasses.
-  // Similar to `goog.inherits`, but uses a hash of prototype properties and
-  // class properties to be extended.
-  var extend = function(protoProps, staticProps) {
-    var parent = this;
-    var child;
-
-    // The constructor function for the new subclass is either defined by you
-    // (the "constructor" property in your `extend` definition), or defaulted
-    // by us to simply call the parent's constructor.
-    if (protoProps && _.has(protoProps, 'constructor')) {
-      child = protoProps.constructor;
-    } else {
-      child = function(){ return parent.apply(this, arguments); };
-    }
-
-    // Add static properties to the constructor function, if supplied.
-    _.extend(child, parent, staticProps);
-
-    // Set the prototype chain to inherit from `parent`, without calling
-    // `parent`'s constructor function.
-    var Surrogate = function(){ this.constructor = child; };
-    Surrogate.prototype = parent.prototype;
-    child.prototype = new Surrogate;
-
-    // Add prototype properties (instance properties) to the subclass,
-    // if supplied.
-    if (protoProps) _.extend(child.prototype, protoProps);
-
-    // Set a convenience property in case the parent's prototype is needed
-    // later.
-    child.__super__ = parent.prototype;
-
-    return child;
-  };
-
-  // Set up inheritance for the model, collection, router, view and history.
-  Model.extend = Collection.extend = Router.extend = View.extend = History.extend = extend;
-
-  // Throw an error when a URL is needed, and none is supplied.
-  var urlError = function() {
-    throw new Error('A "url" property or function must be specified');
-  };
-
-  // Wrap an optional error callback with a fallback error event.
-  var wrapError = function(model, options) {
-    var error = options.error;
-    options.error = function(resp) {
-      if (error) error(model, resp, options);
-      model.trigger('error', model, resp, options);
-    };
-  };
-
-  return Backbone;
-
-}));
-
-},{"underscore":9}],2:[function(require,module,exports){
 "use strict";
 /*globals Handlebars: true */
 var base = require("./handlebars/base");
@@ -1641,7 +31,7 @@ var Handlebars = create();
 Handlebars.create = create;
 
 exports["default"] = Handlebars;
-},{"./handlebars/base":3,"./handlebars/exception":4,"./handlebars/runtime":5,"./handlebars/safe-string":6,"./handlebars/utils":7}],3:[function(require,module,exports){
+},{"./handlebars/base":2,"./handlebars/exception":3,"./handlebars/runtime":4,"./handlebars/safe-string":5,"./handlebars/utils":6}],2:[function(require,module,exports){
 "use strict";
 var Utils = require("./utils");
 var Exception = require("./exception")["default"];
@@ -1822,7 +212,7 @@ exports.log = log;var createFrame = function(object) {
   return obj;
 };
 exports.createFrame = createFrame;
-},{"./exception":4,"./utils":7}],4:[function(require,module,exports){
+},{"./exception":3,"./utils":6}],3:[function(require,module,exports){
 "use strict";
 
 var errorProps = ['description', 'fileName', 'lineNumber', 'message', 'name', 'number', 'stack'];
@@ -1851,7 +241,7 @@ function Exception(message, node) {
 Exception.prototype = new Error();
 
 exports["default"] = Exception;
-},{}],5:[function(require,module,exports){
+},{}],4:[function(require,module,exports){
 "use strict";
 var Utils = require("./utils");
 var Exception = require("./exception")["default"];
@@ -1989,7 +379,7 @@ exports.program = program;function invokePartial(partial, name, context, helpers
 exports.invokePartial = invokePartial;function noop() { return ""; }
 
 exports.noop = noop;
-},{"./base":3,"./exception":4,"./utils":7}],6:[function(require,module,exports){
+},{"./base":2,"./exception":3,"./utils":6}],5:[function(require,module,exports){
 "use strict";
 // Build out our basic SafeString type
 function SafeString(string) {
@@ -2001,7 +391,7 @@ SafeString.prototype.toString = function() {
 };
 
 exports["default"] = SafeString;
-},{}],7:[function(require,module,exports){
+},{}],6:[function(require,module,exports){
 "use strict";
 /*jshint -W004 */
 var SafeString = require("./safe-string")["default"];
@@ -2078,7 +468,15 @@ exports.escapeExpression = escapeExpression;function isEmpty(value) {
 }
 
 exports.isEmpty = isEmpty;
-},{"./safe-string":6}],8:[function(require,module,exports){
+},{"./safe-string":5}],7:[function(require,module,exports){
+// Create a simple path alias to allow browserify to resolve
+// the runtime on a supported path.
+module.exports = require('./dist/cjs/handlebars.runtime');
+
+},{"./dist/cjs/handlebars.runtime":1}],8:[function(require,module,exports){
+module.exports = require("handlebars/runtime")["default"];
+
+},{"handlebars/runtime":7}],9:[function(require,module,exports){
 /*!
  * jQuery JavaScript Library v1.11.1
  * http://jquery.com/
@@ -12388,7 +10786,1594 @@ return jQuery;
 
 }));
 
-},{}],9:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
+// hbsfy compiled Handlebars template
+var Handlebars = require('hbsfy/runtime');
+module.exports = Handlebars.template(function (Handlebars,depth0,helpers,partials,data) {
+  this.compilerInfo = [4,'>= 1.0.0'];
+helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
+  var buffer = "", stack1, helper, functionType="function", escapeExpression=this.escapeExpression;
+
+
+  buffer += "<div class=\"party-slot row\">\r\n    <div class=\"col-lg-12 name-display\">\r\n        <span class=\"text-muted prefix\"></span>\r\n        <span class=\"name\">";
+  if (helper = helpers.name) { stack1 = helper.call(depth0, {hash:{},data:data}); }
+  else { helper = (depth0 && depth0.name); stack1 = typeof helper === functionType ? helper.call(depth0, {hash:{},data:data}) : helper; }
+  buffer += escapeExpression(stack1)
+    + "</span>\r\n    </div>\r\n    <div class=\"health-display col-lg-6\">\r\n        <span class=\"name\">"
+    + escapeExpression(((stack1 = ((stack1 = ((stack1 = (depth0 && depth0.stats)),stack1 == null || stack1 === false ? stack1 : stack1.health)),stack1 == null || stack1 === false ? stack1 : stack1.name)),typeof stack1 === functionType ? stack1.apply(depth0) : stack1))
+    + "</span>\r\n        <span class=\"bar red\" style=\"width=";
+  if (helper = helpers.healthPercent) { stack1 = helper.call(depth0, {hash:{},data:data}); }
+  else { helper = (depth0 && depth0.healthPercent); stack1 = typeof helper === functionType ? helper.call(depth0, {hash:{},data:data}) : helper; }
+  buffer += escapeExpression(stack1)
+    + "%\"></span>\r\n    </div>\r\n    <div class=\"mana-display col-lg-6\">\r\n        <span class=\"name\">"
+    + escapeExpression(((stack1 = ((stack1 = ((stack1 = (depth0 && depth0.stats)),stack1 == null || stack1 === false ? stack1 : stack1.mana)),stack1 == null || stack1 === false ? stack1 : stack1.name)),typeof stack1 === functionType ? stack1.apply(depth0) : stack1))
+    + "</span>\r\n        <span class=\"bar blue\" style=\"width=";
+  if (helper = helpers.manaPercent) { stack1 = helper.call(depth0, {hash:{},data:data}); }
+  else { helper = (depth0 && depth0.manaPercent); stack1 = typeof helper === functionType ? helper.call(depth0, {hash:{},data:data}) : helper; }
+  buffer += escapeExpression(stack1)
+    + "%\"></span>\r\n    </div>\r\n    <div class=\"speed-display col-lg-12\">\r\n        <span class=\"name\">"
+    + escapeExpression(((stack1 = ((stack1 = ((stack1 = (depth0 && depth0.stats)),stack1 == null || stack1 === false ? stack1 : stack1.speed)),stack1 == null || stack1 === false ? stack1 : stack1.name)),typeof stack1 === functionType ? stack1.apply(depth0) : stack1))
+    + "</span>\r\n        <span class=\"bar blue\" style=\"width=";
+  if (helper = helpers.speedPercent) { stack1 = helper.call(depth0, {hash:{},data:data}); }
+  else { helper = (depth0 && depth0.speedPercent); stack1 = typeof helper === functionType ? helper.call(depth0, {hash:{},data:data}) : helper; }
+  buffer += escapeExpression(stack1)
+    + "%\"></span>\r\n    </div>\r\n    <ul class=\"buffs\">\r\n        <li>Haste</li>\r\n    </ul>\r\n</div>";
+  return buffer;
+  });
+
+},{"hbsfy/runtime":8}],11:[function(require,module,exports){
+// hbsfy compiled Handlebars template
+var Handlebars = require('hbsfy/runtime');
+module.exports = Handlebars.template(function (Handlebars,depth0,helpers,partials,data) {
+  this.compilerInfo = [4,'>= 1.0.0'];
+helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
+  var buffer = "", stack1, helper, functionType="function", escapeExpression=this.escapeExpression;
+
+
+  buffer += "<div class=\"party-slot row\">\r\n    <div class=\"col-lg-12 name-display\">\r\n        <span class=\"name\">";
+  if (helper = helpers.name) { stack1 = helper.call(depth0, {hash:{},data:data}); }
+  else { helper = (depth0 && depth0.name); stack1 = typeof helper === functionType ? helper.call(depth0, {hash:{},data:data}) : helper; }
+  buffer += escapeExpression(stack1)
+    + "</span><input class=\"form-control\" style=\"display:none;\" type=\"text\">\r\n        <span class=\"text-muted title\"></span>\r\n    </div>\r\n    <div class=\"health-display col-lg-6\">\r\n        <span class=\"name\">"
+    + escapeExpression(((stack1 = ((stack1 = ((stack1 = (depth0 && depth0.stats)),stack1 == null || stack1 === false ? stack1 : stack1.health)),stack1 == null || stack1 === false ? stack1 : stack1.name)),typeof stack1 === functionType ? stack1.apply(depth0) : stack1))
+    + "</span>\r\n        <span class=\"bar red\" style=\"width=";
+  if (helper = helpers.healthPercent) { stack1 = helper.call(depth0, {hash:{},data:data}); }
+  else { helper = (depth0 && depth0.healthPercent); stack1 = typeof helper === functionType ? helper.call(depth0, {hash:{},data:data}) : helper; }
+  buffer += escapeExpression(stack1)
+    + "%\"></span>\r\n    </div>\r\n    <div class=\"mana-display col-lg-6\">\r\n        <span class=\"name\">"
+    + escapeExpression(((stack1 = ((stack1 = ((stack1 = (depth0 && depth0.stats)),stack1 == null || stack1 === false ? stack1 : stack1.mana)),stack1 == null || stack1 === false ? stack1 : stack1.name)),typeof stack1 === functionType ? stack1.apply(depth0) : stack1))
+    + "</span>\r\n        <span class=\"bar blue\" style=\"width=";
+  if (helper = helpers.manaPercent) { stack1 = helper.call(depth0, {hash:{},data:data}); }
+  else { helper = (depth0 && depth0.manaPercent); stack1 = typeof helper === functionType ? helper.call(depth0, {hash:{},data:data}) : helper; }
+  buffer += escapeExpression(stack1)
+    + "%\"></span>\r\n    </div>\r\n    <div class=\"exp-display col-lg-12\">\r\n        <span class=\"name\">Exp</span>\r\n        <span class=\"bar orange\"></span>\r\n    </div>\r\n    <div class=\"speed-display col-lg-12\">\r\n        <span class=\"name\">"
+    + escapeExpression(((stack1 = ((stack1 = ((stack1 = (depth0 && depth0.stats)),stack1 == null || stack1 === false ? stack1 : stack1.speed)),stack1 == null || stack1 === false ? stack1 : stack1.name)),typeof stack1 === functionType ? stack1.apply(depth0) : stack1))
+    + "</span>\r\n        <span class=\"bar blue\" style=\"width=";
+  if (helper = helpers.speedPercent) { stack1 = helper.call(depth0, {hash:{},data:data}); }
+  else { helper = (depth0 && depth0.speedPercent); stack1 = typeof helper === functionType ? helper.call(depth0, {hash:{},data:data}) : helper; }
+  buffer += escapeExpression(stack1)
+    + "%\"></span>\r\n    </div>\r\n    <button class=\"btn btn-block btn-info attack\" ";
+  if (helper = helpers.disabled) { stack1 = helper.call(depth0, {hash:{},data:data}); }
+  else { helper = (depth0 && depth0.disabled); stack1 = typeof helper === functionType ? helper.call(depth0, {hash:{},data:data}) : helper; }
+  buffer += escapeExpression(stack1)
+    + ">Attack</button>\r\n    <ul class=\"skills\">\r\n        <li>Fireball</li>\r\n    </ul>\r\n</div>";
+  return buffer;
+  });
+
+},{"hbsfy/runtime":8}],12:[function(require,module,exports){
+(function(){
+    var root = this;
+    var Character = require('tneb/systems/battle/character.js');
+    var $ = require('jQuery');
+    var _ = require('underscore');
+    var UIBattleStats = require('tneb/ui/uiBattleStats.js');
+    function EnemyController(Game){
+        this.name = "Racoon";
+        this.character = new Character(null, this.name, this);
+        this.character.isAi = false;
+        this.ui = new UIBattleStats(this, this.character, document.getElementById("enemy-battle-stats"));
+        this.Game = Game;
+        this.lastFrame = {};
+    }
+    
+    EnemyController.prototype.update = function(){
+        this.character.stats.health.increase(this.character.stats.healthRegen.baseValue() * this.Game.timer.elapsed);
+        this.character.stats.mana.increase(this.character.stats.manaRegen.baseValue() * this.Game.timer.elapsed);
+    };
+    
+    EnemyController.prototype.render = function(){
+        this.ui.render();
+    };
+
+    EnemyController.prototype.doAction = function(target){
+        this.character.useSkill(
+            this.character.basicAttack(),
+            target);
+        this.character.stats.speed.baseValue(0,true);
+    };
+    
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = EnemyController;
+    }else{
+        root.EnemyController = EnemyController;
+    }
+
+}());
+},{"jQuery":9,"tneb/systems/battle/character.js":21,"tneb/ui/uiBattleStats.js":28,"underscore":31}],13:[function(require,module,exports){
+(function(){
+    var root = this;
+    var Character = require('tneb/systems/battle/character.js');
+    var $ = require('jQuery');
+    var randomNames = [
+    "Sammy", "Villy", "Azarath", "Metrion", "Zinthos",
+    "Flying Watermelon", "Blue", "Meteor", "Lion Rabbit",
+    "Robotmayo", "SJVellenga", "Antlong", "MoragX",
+    "tangentialThinker","waffleyone",
+    "Muffer-Nl", "gamehelp16", "firewires"];
+
+    var _ = require('underscore');
+
+    var UIPlayerBattleStats = require('tneb/ui/uiPlayerBattleStats.js');
+
+    function Player(Game){
+        this.name = _.sample(randomNames,1)[0];
+        this.character = new Character(null, this.name, this);
+        this.character.isAi = false;
+        this.ui = new UIPlayerBattleStats(
+            this,
+            this.character,
+            document.getElementById("party-battle-stats"));
+        this.Game = Game;
+        this.lastFrame = {};
+        console.log(this.ui.uiData.attackBtn.$el);
+        this.ui.uiData.attackBtn.$el.click(function(evt){
+            console.log(this.target);
+            if(this.target){
+                this.character.useSkill(
+                    this.character.basicAttack(),
+                    this.target)
+            }
+
+        });
+    }
+
+    Player.prototype.initBattle = function(allies,enemies){
+        this.allies = allies;
+        this.enemies = enemies;
+    };
+
+    Player.prototype.doAction = function(target){
+        this.ui.enableAttackBtn(true);
+        this.target = target;
+    };
+
+    
+    Player.prototype.update = function(){
+        this.character.stats.health.increase(
+            this.character.stats.healthRegen.baseValue()
+            * this.Game.timer.elapsed);
+
+        this.character.stats.mana.increase(
+            this.character.stats.manaRegen.baseValue()
+            * this.Game.timer.elapsed);
+    };
+    
+    Player.prototype.render = function(){
+        this.ui.render();
+    };
+    
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = Player;
+    }else{
+        root.Player = Player;
+    }
+
+}());
+},{"jQuery":9,"tneb/systems/battle/character.js":21,"tneb/ui/uiPlayerBattleStats.js":29,"underscore":31}],14:[function(require,module,exports){
+(function(){
+    var root = this;
+    var create;
+    var Character = require('tneb/systems/battle/character.js');
+    var Enemy = require('tneb/systems/battle/enemy.js');
+    function Create(){
+        if(create) return create;
+        create = {};
+        create.Enemy = function(name){
+            var ret = new Enemy({name : name});
+            return ret;
+        };
+        return create;
+    }
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = Create;
+        root.Create = Create;
+    }else{
+        root.Create = Create;
+    }
+}());
+},{"tneb/systems/battle/character.js":21,"tneb/systems/battle/enemy.js":22}],15:[function(require,module,exports){
+(function(){
+    // silly dance party
+    var root = this;
+    var config = {
+        fps : 30
+    };
+    config.battle = {
+        armorMultiplier : 0.04,
+        magicResMultiplier : 0.06,
+        elementalResMultiplier : 0.015,
+        maxSpeed : 100
+    };
+    
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = config;
+        root.config = config;
+    }else{
+        root.config = config;
+    }
+}());
+},{}],16:[function(require,module,exports){
+(function () {
+    var root = this;
+    var constants = {};
+    constants.damageTypes = {
+        physical: 'physical',
+        magical: 'magical',
+        pure: 'pure',
+        hpRemoval: 'hpRemoval',
+        manaRemoval: 'manaRemoval'
+    };
+    constants.elements = {
+        neutral: 'neutral',
+        fire: 'fire',
+        ice: 'ice',
+        water: 'water',
+        elec: 'electric',
+        light: 'light',
+        dark: 'dark',
+        earth: 'earth',
+        wind: 'wind'
+    };
+
+    constants.stats = {
+        fireRes: "Fire Res",
+        iceRes: "Ice Res",
+        elecRes: "Elec Res",
+        waterRes: "Water Res",
+        earthRes: "Earth Res",
+        windRes: "Wind Res",
+        lightRes: "Light Res",
+        darkRes: "Dark Res",
+        exp : "Exp",
+        str: "Str",
+        dex: "Dex",
+        int: "Int",
+        luk: "Luk",
+        magicalPower : "Magical Power",
+        physicalPower : "Physical Power",
+        health: "Health",
+        mana: "Mana",
+        healthRegen: "Health Regen",
+        manaRegen: "Mana Regen",
+        speed: "Speed",
+        speedGain: "Speed Gain",
+        penetration: {
+            percent: {
+                armor: "Percent Armor Penetration",
+                magic: "Percent Magic Penetration",
+                fire: "Percent Fire Penetration",
+                ice: "Percent Ice Penetration",
+                water:"Percent Water Penetration",
+                elec: "Percent Electrical Penetration",
+                earth: "Percent Earth Penetration",
+                wind: "Percent Wind Penetration",
+                light: "Percent Light Penetration",
+                dark: "Percent Dark Penetration"
+            },
+            flat: {
+                armor: "Flat Armor Penetration",
+                magic: "Flat Magic Penetration",
+                fire: "Flat Fire Penetration",
+                ice: "Flat Ice Penetration",
+                water:"Flat Water Penetration",
+                elec: "Flat Electrical Penetration",
+                earth: "Flat Earth Penetration",
+                wind: "Flat Wind Penetration",
+                light: "Flat Light Penetration",
+                dark: "Flat Dark Penetration"
+            }
+        }
+    };
+
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = constants;
+        root.constants = constants;
+    }else{
+        root.constants = constants;
+    }
+}());
+},{}],17:[function(require,module,exports){
+(function(){
+    var root = this;
+    var $ = require('jQuery');
+    var _ = require('underscore');
+    var config = require('tneb/etc/config.js');
+    var Character = require('tneb/systems/battle/character.js');
+    var Battle = require('tneb/systems/battle/battle.js');
+    var modApi = require('tneb/systems/mod/modapi.js');
+    var hook = require('tneb/systems/battle/hook.js');
+    var Create = require('tneb/create.js');
+    var Place = require('tneb/systems/map/place.js');
+    var events = require('tneb/systems/map/events.js');
+    var Player = require('tneb/controllers/player.js');
+    var EnemyController = require('tneb/controllers/enemyController.js');
+    var logger = require('tneb/logger');
+    
+    var Game = {};
+    Game.systems = {};
+    Game.updateList = [];
+    Game.timer = {
+        elapsed : 1,
+        lastTime : 1,
+        timeout : -1
+    };
+    Game.controllers = [];
+    Game.global = {};
+    Game.global.events = {};
+    _.extend(Game.global.events,hook);
+    Game.init = function(){
+        var ec = new EnemyController(this);
+        Game.activePlayer = new Player(this);
+        Game.updateList.push(this.activePlayer);
+        Game.updateList.push(ec);
+        Game.timer.lastTime = Date.now();
+        Game.loop();
+        Game.systems.battle = new Battle(this);
+        Game.updateList.push(Game.systems.battle);
+        Game.create = Create(this);
+        console.log(this.updateList);
+        Game.systems.battle.start(this.activePlayer.character, ec.character);
+    };
+    
+    Game.update = function(){
+        this.updateList.forEach(function(val){
+            val.update();
+        });
+    };
+    Game.render = function(){
+        this.updateList.forEach(function(val){
+            val.render();
+        });
+    };
+    Game.loop = function(){
+        Game.timer.elapsed = (Date.now() - Game.timer.lastTime) / 1000;
+        Game.update();
+        Game.render();
+        Game.timer.lastTime = Date.now();
+        Game.timer.timeout = setTimeout(Game.loop,1000/config.fps);
+    };
+    Game.init();
+    Game.version = "0.0.2";
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = Game;
+        root.Game = Game;
+    }else{
+        root.Game = Game;
+    }
+}());
+},{"jQuery":9,"tneb/controllers/enemyController.js":12,"tneb/controllers/player.js":13,"tneb/create.js":14,"tneb/etc/config.js":15,"tneb/logger":18,"tneb/systems/battle/battle.js":19,"tneb/systems/battle/character.js":21,"tneb/systems/battle/hook.js":23,"tneb/systems/map/events.js":25,"tneb/systems/map/place.js":26,"tneb/systems/mod/modapi.js":27,"underscore":31}],18:[function(require,module,exports){
+(function(){
+    var root = this;
+    var $ = require('jQuery');
+    var GameLogger = {};
+    var el;
+    GameLogger.displayList = [];
+    GameLogger.currentMessages = [];
+    GameLogger.fullLog = [];
+    GameLogger.el = $("#logger");
+    GameLogger.maxMessages = 8;
+    el = GameLogger.el;
+    GameLogger.log = function(type,message){
+        var curTime = Date.now(),
+            len;
+        this.fullLog.push({message : message, timestamp : curTime, type : type});
+        this.currentMessages.push({message : message, timestamp : curTime, type : type});
+        if(this.currentMessages.length > this.maxMessages){
+            this.currentMessages.splice(0,1);
+        }
+        len = this.currentMessages.length;
+        while(len--){
+            this.displayList[len].innerHTML = this.currentMessages[len].message;
+        }
+    };
+    for(var i = 0; i < GameLogger.maxMessages; i++){
+        var p = document.createElement('p');
+        GameLogger.displayList.push(p);
+        el.append(p);
+    }
+    
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = GameLogger;
+    }
+    root.GameLogger = GameLogger;
+}());
+},{"jQuery":9}],19:[function(require,module,exports){
+(function () {
+    var _ = require('underscore');
+    var $ = require('jQuery');
+    var root = this;
+
+    function Battle(Game) {
+        this.log = [];
+        this.fighterA;
+        this.fighterB;
+        this.Game = Game;
+        this.active = false;
+        this.init();
+    }
+    Battle.version = "0.0.1";
+    Battle.prototype.init = function () {
+        this.Game.global.events.trigger('battle:systemInit');
+
+    };
+
+    Battle.prototype.update = function () {
+        if (!this.active) return;
+        var fasg = this.fighterA.stats.speedGain.getTotal() * this.Game.timer.elapsed;
+        // I originally was going to abbrivate as FighterAspeedGain but that seemed like a bad idea.
+        var fbsg = this.fighterA.stats.speedGain.getTotal() * this.Game.timer.elapsed;
+        this.fighterA.stats.speed.increase(fasg);
+        this.fighterB.stats.speed.increase(fbsg);
+
+        if (this.fighterA.stats.speed.isMax()) {
+            this.actionQueue.push([this.fighterA, this.fighterB]);
+        }
+
+        if (this.fighterB.stats.speed.isMax()) {
+            if (this.actionQueue.length > 0 && (this.fighterA.stats.speed.max() - fasg) < (this.fighterB.stats.speed.max() - fbsg)) {
+                this.actionQueue.push([this.fighterB, this.fighterA]);
+            } else {
+                this.actionQueue.unshift([this.fighterB, this.fighterA]);
+            }
+        }
+
+        if (this.actionQueue.length) {
+            var len = this.actionQueue.length;
+            while (len-- && this.active) {
+                this.actionQueue[len][0].doAction(this.actionQueue[len][1]);
+                this.actionQueue.pop();
+            }
+        }
+    };
+
+    Battle.prototype.end = function () {
+        this.active = false;
+        return true;
+    };
+
+
+    Battle.prototype.render = function (player, enemy) {
+        
+    };
+
+    Battle.prototype.start = function (fighterA, fighterB, conditions) {
+        this.clear();
+        if (!fighterA || !fighterB) return false;
+        this.fighterA = fighterA;
+        this.fighterB = fighterB;
+        this.Game.global.events.trigger('system:battle:start', this);
+        this.active = true;
+        fighterA.stats.speed.baseValue(0);
+        fighterB.stats.speed.baseValue(0);
+        this.update();
+        this.Game.global.events.once("system:character:death", this.end,this);
+        return this.active;
+    };
+
+    Battle.prototype.clear = function () {
+        this.actionQueue = [];
+        this.allCharacters = [];
+    };
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = Battle;
+        root.Battle = Battle;
+    } else {
+        root.Battle = Battle;
+    }
+}());
+},{"jQuery":9,"underscore":31}],20:[function(require,module,exports){
+(function () {
+    var root = this;
+    var _ = require('underscore');
+    var constants = require('tneb/etc/constants.js');
+    var config = require('tneb/etc/config.js');
+    
+    
+    /*
+    * Create a new calculator
+    * @param {Character} [user] to reference
+    */
+    function Calculator(user) {
+        this.user = user;
+    }
+    
+    /*
+    * Reduce value by Armor
+    * @param {Number} val The value to reduce
+    * @param {Object} [source] The character doing damage. Will take into account its penetration stats.
+    * @param {Object} [pen] Object containing extra penetration information
+    * @param {Number} [pen.percent.armor | pen.flat.armor] The actual penetration numbers 
+    * @return {Number} The new reduced value, will never be less than 0.
+    */
+    Calculator.prototype.reduceByArmor = function (val, source, pen) {
+        var percentApen = 0,
+            flatApen = 0,
+            armor = this.user.stats.armor.getTotal(),
+            total = val;
+        if (pen) {
+            if(pen.percent) percentApen += pen.percent.armor || 0;
+            if(pen.flat) flatApen += pen.flat.armor || 0;
+        }
+        if (source) {
+            percentApen += source.stats.penetration.percent.armor.getTotal();
+            flatApen += source.stats.penetration.flat.armor.getTotal();
+        }
+        armor -= armor * (percentApen * 0.01);
+        armor -= flatApen;
+        if(armor < 0) armor = 0;
+        total -= total * ( (armor * config.battle.armorMultiplier) * 0.01 );
+        return (total < 0 ? 0 : total);
+    };
+    
+    /*
+    * Reduce value by Magic Resistance
+    * @param {Number} val The value to reduce
+    * @param {Object} [source] The character doing damage. Will take into account its penetration stats.
+    * @param {Object} [pen] Object containing extra penetration information
+    * @param {Number} [pen.percent.magic | pen.flat.magic] The actual penetration numbers 
+    * @return {Number} The new reduced value, will never be less than 0.
+    */
+    Calculator.prototype.reduceByMagicResistance = function (val, source, pen) {
+        var percentMpen = 0,
+            flatMpen = 0,
+            magicRes = this.user.stats.magicRes.getTotal(),
+            total = val;
+        if (source) {
+            percentMpen += source.stats.penetration.percent.magic.getTotal();
+            flatMpen += source.stats.penetration.flat.magic.getTotal();
+        }
+        if (pen) {
+            if(pen.percent) percentMpen += pen.percent.magic || 0;
+            if(pen.flat) flatMpen += pen.flat.magic || 0;
+        }
+        magicRes -= magicRes * (percentMpen * 0.01);
+        magicRes -= flatMpen;
+        if(magicRes < 0) magicRes = 0;
+        total -= total * ((magicRes * config.battle.magicResMultiplier)* 0.01);
+        return (total < 0 ? 0 : total);
+    };
+    
+    /*
+    * Reduce value by Elemental  Resistance
+    * @param {String} el The element
+    * @param {Number} val The value to reduce
+    * @param {Object} [source] The character doing damage. Will take into account its penetration stats.
+    * @param {Object} [pen] Object containing extra penetration information
+    * @param {Number} [pen.percent.element | pen.flat.element] The actual penetration numbers 
+    * @return {Number} The new reduced value, will never be less than 0.
+    */
+    Calculator.prototype.reduceByElementalResistance = function (el, val, source, pen) {
+        var percentResPen = 0,
+            flatResPen = 0,
+            res = this.user.stats.resistances[el].getTotal(),
+            total = val;
+        if (source) {
+            percentResPen += source.stats.penetration.percent[el].getTotal();
+            flatResPen += source.stats.penetration.flat[el].getTotal();
+        }
+        if (pen) {
+            if(pen.percent) percentResPen = pen.percent[el] || 0;
+            if(pen.flat) flatResPen = pen.flat[el] || 0;
+        }
+        res -= res * (percentResPen * 0.01);
+        res -= flatResPen;
+        if(res < 0) res = 0;
+        total -= total * ((res * config.battle.elementalResMultiplier) * 0.01);
+        return (total < 0 ? 0 : total);
+    };
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = Calculator;
+        root.Calculator = Calculator;
+    }else{
+        root.Calculator = Calculator;
+    }
+
+}());
+},{"tneb/etc/config.js":15,"tneb/etc/constants.js":16,"underscore":31}],21:[function(require,module,exports){
+(function () {
+    var root = this;
+    var _ = require('underscore');
+    var utils = require('tneb/utils.js');
+    var constants = require('tneb/etc/constants.js');
+    var config = require('tneb/etc/config.js');
+    var Calculator = require('./calculator.js');
+    var Stat = require('./stat.js');
+
+    function Character(data,name,controller) {
+        var stats = Character.prototype.getDefaultStats();
+        this.calculator = new Calculator(this);
+        this.canAction = true;
+        if (_.isObject(data)) {
+            utils.objOverride(stats, data);
+        }
+        this.name = name;
+        this.controller = controller;
+        this.convertToStatObj(stats);
+        this.stats = stats;
+        this.equipped = {
+            head: null,
+            top: null,
+            leftHand: null,
+            rightHand: null,
+            feet: null,
+            bottom: null,
+            accessory: null
+        };
+        this.inventory = [];
+        this.skills = [];
+        this.battleRating = 0;
+    }
+    
+    Character.prototype.convertToStatObj = function(stats){
+        stats.health = new Stat(constants.stats.health, stats.health, stats.health,0);
+        stats.level = new Stat(constants.stats.level, stats.level, config.maxLevel);
+        stats.armor = new Stat(constants.stats.armor,stats.armor);
+        stats.magicRes = new Stat(constants.stats.magicRes,stats.magicRes);
+        stats.mana = new Stat(constants.stats.mana, stats.mana, stats.mana, 0);
+        stats.healthRegen = new Stat(constants.stats.healthRegen, stats.healthRegen);
+        stats.manaRegen = new Stat(constants.stats.manaRegen, stats.manaRegen);
+        stats.physicalPower = new Stat(constants.stats.physicalPower, stats.physicalPower);
+        stats.magicalPower = new Stat(constants.stats.magicalPower, stats.magicalPower);
+        stats.exp = new Stat(constants.stats.exp, 25,100,0);
+        
+        stats.str = new Stat(constants.stats.str, stats.str);
+        stats.int = new Stat(constants.stats.int, stats.int);
+        stats.dex = new Stat(constants.stats.dex, stats.dex);
+        stats.luk = new Stat(constants.stats.luk, stats.luk);
+        
+        stats.resistances.fire = new Stat(constants.stats.fireRes, stats.resistances.fire);
+        stats.resistances.ice = new Stat(constants.stats.iceRes, stats.resistances.ice);
+        stats.resistances.elec = new Stat(constants.stats.elecRes, stats.resistances.elec);
+        stats.resistances.water = new Stat(constants.stats.waterRes, stats.resistances.water);
+        stats.resistances.earth = new Stat(constants.stats.earthRes, stats.resistances.earth);
+        stats.resistances.wind = new Stat(constants.stats.windRes, stats.resistances.wind);
+        stats.resistances.light = new Stat(constants.stats.lightRes, stats.resistances.light);
+        stats.resistances.dark = new Stat(constants.stats.darkRes, stats.resistances.dark);
+        
+        stats.speedGain = new Stat(constants.stats.speedGain, stats.speedGain);
+        stats.speed = new Stat(constants.stats.speed, stats.speed, config.battle.maxSpeed);
+        
+        stats.penetration.flat.fire = new Stat(constants.stats.penetration.flat.fire, stats.penetration.flat.fire);
+        stats.penetration.flat.ice = new Stat(constants.stats.penetration.flat.ice, stats.penetration.flat.ice);
+        stats.penetration.flat.elec = new Stat(constants.stats.penetration.flat.elec, stats.penetration.flat.elec);
+        stats.penetration.flat.water = new Stat(constants.stats.penetration.flat.water, stats.penetration.flat.water);
+        stats.penetration.flat.earth = new Stat(constants.stats.penetration.flat.earth, stats.penetration.flat.earth);
+        stats.penetration.flat.wind = new Stat(constants.stats.penetration.flat.wind, stats.penetration.flat.wind);
+        stats.penetration.flat.light = new Stat(constants.stats.penetration.flat.light, stats.penetration.flat.light);
+        stats.penetration.flat.dark = new Stat(constants.stats.penetration.flat.dark, stats.penetration.flat.dark);
+        stats.penetration.flat.armor = new Stat(constants.stats.penetration.flat.armor, stats.penetration.flat.armor);
+        stats.penetration.flat.magic = new Stat(constants.stats.penetration.flat.magic, stats.penetration.flat.magic);
+        
+        stats.penetration.percent.fire = new Stat(constants.stats.penetration.percent.fire, stats.penetration.percent.fire);
+        stats.penetration.percent.ice = new Stat(constants.stats.penetration.percent.ice, stats.penetration.percent.ice);
+        stats.penetration.percent.elec = new Stat(constants.stats.penetration.percent.elec, stats.penetration.percent.elec);
+        stats.penetration.percent.water = new Stat(constants.stats.penetration.percent.water, stats.penetration.percent.water);
+        stats.penetration.percent.earth = new Stat(constants.stats.penetration.percent.earth, stats.penetration.percent.earth);
+        stats.penetration.percent.wind = new Stat(constants.stats.penetration.percent.wind, stats.penetration.percent.wind);
+        stats.penetration.percent.light = new Stat(constants.stats.penetration.percent.light, stats.penetration.percent.light);
+        stats.penetration.percent.dark = new Stat(constants.stats.penetration.percent.dark, stats.penetration.percent.dark);
+        stats.penetration.percent.armor = new Stat(constants.stats.penetration.percent.armor, stats.penetration.percent.armor);
+        stats.penetration.percent.magic = new Stat(constants.stats.penetration.percent.magic, stats.penetration.percent.magic);
+        
+
+    };
+
+    Character.prototype.doAction = function (target) {
+        if(this.canAction){
+            this.controller.doAction(target);
+        }
+    };
+
+    Character.prototype.useSkill = function (skill, target) {
+        if (!skill.cost(this, target)) return false;
+        this.controller.Game.global.events.trigger('system:battle:cast:skill', skill, this, target);
+        skill.use(this, target);
+    };
+
+    Character.prototype.basicAttack = function () {
+        if (this.basicAttackSkill) return this.basicAttackSkill;
+        var damage;
+        var skill = {
+            name: 'Basic Attack'
+        };
+        damage = {
+            type: constants.damageTypes.physical,
+            beforeRes: 0
+        };
+        skill.use = function (user, target) {
+            damage.beforeRes = user.stats.physicalPower.getTotal() + (user.stats.str.getTotal() * 0.65);
+            return target.applyDamage({
+                skill: this,
+                user: user,
+                target: target
+            }, damage);
+        };
+        skill.cost = function () {
+            return true;
+        };
+        this.basicAttackSkill = skill;
+        return skill;
+    };
+
+    // damage = {type : physical, el : fire, beforeRes : 10, afterRes : 10, callback : f(dealt,battleIngo,damge)}
+    //source = {skill : skill, user : user, target : target}
+
+    /**
+     * Applys damage to the character(itself not the supplied source)
+     * @param {Object} source Contains refrences to the damage source.
+     * @param {Object} source.skill The skill being used
+     * @param {Character} source.user The user or owner
+     * @param {Character} source.target The target
+     * @param {Object} damage The damage object
+     * @param {String} damage.type The type of damage
+     * @param [String] damage.element The element of the damage
+     * @param {function|number} damage.beforeRes The damage before resistences are applied
+     * @param {function|number} damage.afterRes The damage after resistances are applied
+     * @param [function] damage.callback A callback that is invoked after damage is calculated but before its applied.
+     * @return {Number} The damage dealth
+     */
+    Character.prototype.applyDamage = function (source, damage) {
+        var i,
+            d,
+            el,
+            total = 0;
+        el = damage.element || constants.elements.neutral;
+        if (!damage.pure && damage.type === constants.damageTypes.physical) {
+            if (el === constants.elements.neutral) {
+                total = this.calculator.reduceByArmor(damage.beforeRes, source.user, damage.penObj);
+            } else {
+                total = this.calculator.reduceByElementalResistance(
+                    el,
+                    this.calculator.calculateArmorReduction(damage.beforeRes, damage.penObj),
+                    source.user,
+                    damage.penObj
+                );
+            }
+        } else if (!damage.pure && damage.type === constants.damageTypes.magical) {
+            if (el === constants.elements.neutral) {
+                total = this.calculator.reduceByMagicResistance(damage.beforeRes, source.user, damage);
+            } else {
+                total = this.calculator.reduceByElementalResistance(
+                    el,
+                    this.calculator.reduceByMagicResistance(damage.beforeRes, source.user, damage.penObj),
+                    source.user,
+                    damage.penObj
+                );
+            }
+        } else {
+            total += damage.beforeRes;
+        }
+        total += damage.afterRes ? damage.afterRes(source) : 0;
+        this.takeDamage(total, damage.type, el, damage.isPure);
+        if (damage.callback) damage.callback(total, damage, source);
+        return total;
+    };
+
+    Character.prototype.takeDamage = function (val, type, el, pure) {
+        this.changeHealth(-val);
+        this.controller.Game.global.events.trigger('system:battle:takenDamage:', val, type, el, pure);
+    };
+
+    Character.prototype.changeHealth = function (val) {
+        this.stats.health.change(val);
+        if (this.stats.health.baseValue() < 1) {
+            this.controller.Game.global.events.trigger('system:character:death', this);
+        }
+    };
+
+    Character.prototype.getDefaultStats = function () {
+        var max = 5;
+        var sRand = _.random(0, max);
+        var iRand = _.random(0, max);
+        var lRand = _.random(0, max);
+        var dRand = _.random(0, max);
+        return {
+            level: 1,
+            health: 20,
+            mana: 6,
+            str: 5,
+            int: 5,
+            dex: 5,
+            luk: 5,
+            armor: 1,
+            physicalPower: 0,
+            magicalPower: 0,
+            magicRes: 0.2,
+            speed: 50,
+            speedGain: 100,
+            healthRegen: 0.2, // Internally represented as per second but displayed as per 5 to the player
+            manaRegen: 0.125,
+
+            resistances : {
+                fire: 0,
+                ice: 0,
+                water: 0,
+                elec: 0,
+                earth: 0,
+                wind: 0,
+                light: 0,
+                dark: 0,
+            },
+
+            penetration: {
+                percent: {
+                    armor: 0,
+                    magic: 0,
+                    fire: 0,
+                    ice: 0,
+                    water: 0,
+                    elec: 0,
+                    earth: 0,
+                    wind: 0,
+                    light: 0,
+                    dark: 0
+                },
+                flat: {
+                    armor: 0,
+                    magic: 0,
+                    fire: 0,
+                    ice: 0,
+                    water: 0,
+                    elec: 0,
+                    earth: 0,
+                    wind: 0,
+                    light: 0,
+                    dark: 0
+                }
+            }
+        };
+    };
+
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = Character;
+        root.Character = Character;
+    }else{
+        root.Character = Character;
+    }
+}());
+},{"./calculator.js":20,"./stat.js":24,"tneb/etc/config.js":15,"tneb/etc/constants.js":16,"tneb/utils.js":30,"underscore":31}],22:[function(require,module,exports){
+(function(){
+    var root = this;
+    var Character = require('./character.js');
+    
+    function Enemy(){
+        Character.apply(this,arguments);
+    }
+    
+    Enemy.prototype = Character.prototype;
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = Enemy;
+        
+        root.Enemy = Enemy;
+    }else{
+        root.Enemy = Enemy;
+    }
+}());
+},{"./character.js":21}],23:[function(require,module,exports){
+(function () {
+    var root = this;
+    var _ = require('underscore');
+    var pEvents = {};
+    // Regular expression used to split event strings.
+    var eventSplitter = /\s+/;
+
+    // Implement fancy features of the Events API such as multiple event
+    // names `"change blur"` and jQuery-style event maps `{change: action}`
+    // in terms of the existing API.
+    var eventsApi = function (obj, action, name, rest) {
+        if (!name) return true;
+
+        // Handle event maps.
+        if (typeof name === 'object') {
+            for (var key in name) {
+                obj[action].apply(obj, [key, name[key]].concat(rest));
+            }
+            return false;
+        }
+
+        // Handle space separated event names.
+        if (eventSplitter.test(name)) {
+            var names = name.split(eventSplitter);
+            for (var i = 0, length = names.length; i < length; i++) {
+                obj[action].apply(obj, [names[i]].concat(rest));
+            }
+            return false;
+        }
+
+        return true;
+    };
+    // A difficult-to-believe, but optimized internal dispatch function for
+    // triggering events. Tries to keep the usual cases speedy (most internal
+    // Backbone events have 3 arguments).
+    var triggerEvents = function (events, args) {
+        var ev, i = -1,
+            l = events.length,
+            a1 = args[0],
+            a2 = args[1],
+            a3 = args[2];
+        switch (args.length) {
+        case 0:
+            while (++i < l)(ev = events[i]).callback.call(ev.ctx);
+            return;
+        case 1:
+            while (++i < l)(ev = events[i]).callback.call(ev.ctx, a1);
+            return;
+        case 2:
+            while (++i < l)(ev = events[i]).callback.call(ev.ctx, a1, a2);
+            return;
+        case 3:
+            while (++i < l)(ev = events[i]).callback.call(ev.ctx, a1, a2, a3);
+            return;
+        default:
+            while (++i < l)(ev = events[i]).callback.apply(ev.ctx, args);
+            return;
+        }
+    };
+    var Events = {
+
+        // Bind an event to a `callback` function. Passing `"all"` will bind
+        // the callback to all events fired.
+        on: function (name, callback, context, priority) {
+            if (!eventsApi(this, 'on', name, [callback, context]) || !callback) return this;
+            this._events || (this._events = {});
+            var events = this._events[name] || (this._events[name] = []);
+            events.push({
+                callback: callback,
+                context: context,
+                ctx: context || this,
+                priority : priority
+            });
+            if(null == priority) priority = 500;
+            events.sort(function(a,b){return a.priority-b.priority;});
+            return this;
+        },
+
+        // Bind an event to only be triggered a single time. After the first time
+        // the callback is invoked, it will be removed.
+        once: function (name, callback, context) {
+            if (!eventsApi(this, 'once', name, [callback, context]) || !callback) return this;
+            var self = this;
+            var once = _.once(function () {
+                self.off(name, once);
+                callback.apply(this, arguments);
+            });
+            once._callback = callback;
+            return this.on(name, once, context);
+        },
+
+        // Remove one or many callbacks. If `context` is null, removes all
+        // callbacks with that function. If `callback` is null, removes all
+        // callbacks for the event. If `name` is null, removes all bound
+        // callbacks for all events.
+        off: function (name, callback, context) {
+            if (!this._events || !eventsApi(this, 'off', name, [callback, context])) return this;
+
+            // Remove all callbacks for all events.
+            if (!name && !callback && !context) {
+                this._events = void 0;
+                return this;
+            }
+
+            var names = name ? [name] : _.keys(this._events);
+            for (var i = 0, length = names.length; i < length; i++) {
+                name = names[i];
+
+                // Bail out if there are no events stored.
+                var events = this._events[name];
+                if (!events) continue;
+
+                // Remove all callbacks for this event.
+                if (!callback && !context) {
+                    delete this._events[name];
+                    continue;
+                }
+
+                // Find any remaining events.
+                var remaining = [];
+                for (var j = 0, k = events.length; j < k; j++) {
+                    var event = events[j];
+                    if (
+                        callback && callback !== event.callback &&
+                        callback !== event.callback._callback ||
+                        context && context !== event.context
+                    ) {
+                        remaining.push(event);
+                    }
+                }
+
+                // Replace events if there are any remaining.  Otherwise, clean up.
+                if (remaining.length) {
+                    this._events[name] = remaining;
+                } else {
+                    delete this._events[name];
+                }
+            }
+
+            return this;
+        },
+
+        // Trigger one or many events, firing all bound callbacks. Callbacks are
+        // passed the same arguments as `trigger` is, apart from the event name
+        // (unless you're listening on `"all"`, which will cause your callback to
+        // receive the true name of the event as the first argument).
+        trigger: function (name) {
+            if (!this._events) return this;
+            var args = Array.prototype.slice.call(arguments, 1);
+            if (!eventsApi(this, 'trigger', name, args)) return this;
+            var events = this._events[name];
+            var allEvents = this._events.all;
+            if (events) triggerEvents(events, args);
+            if (allEvents) triggerEvents(allEvents, arguments);
+            return this;
+        },
+
+        // Tell this object to stop listening to either specific events ... or
+        // to every object it's currently listening to.
+        stopListening: function (obj, name, callback) {
+            var listeningTo = this._listeningTo;
+            if (!listeningTo) return this;
+            var remove = !name && !callback;
+            if (!callback && typeof name === 'object') callback = this;
+            if (obj)(listeningTo = {})[obj._listenId] = obj;
+            for (var id in listeningTo) {
+                obj = listeningTo[id];
+                obj.off(name, callback, this);
+                if (remove || _.isEmpty(obj._events)) delete this._listeningTo[id];
+            }
+            return this;
+        }
+
+    };
+    var listenMethods = {
+        listenTo: 'on',
+        listenToOnce: 'once'
+    };
+
+    // Inversion-of-control versions of `on` and `once`. Tell *this* object to
+    // listen to an event in another object ... keeping track of what it's
+    // listening to.
+    _.each(listenMethods, function (implementation, method) {
+        Events[method] = function (obj, name, callback) {
+            var listeningTo = this._listeningTo || (this._listeningTo = {});
+            var id = obj._listenId || (obj._listenId = _.uniqueId('l'));
+            listeningTo[id] = obj;
+            if (!callback && typeof name === 'object') callback = this;
+            obj[implementation](name, callback, this);
+            return this;
+        };
+    });
+
+    // Aliases for backwards compatibility.
+    Events.bind = Events.on;
+    Events.unbind = Events.off;
+    pEvents = _.extend(pEvents,Events);
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = pEvents;
+        root.Hook = pEvents;
+    }else{
+        root.Hook = pEvents;
+    }
+}());
+},{"underscore":31}],24:[function(require,module,exports){
+(function(){
+    var root = this;
+    var _ = require('underscore');
+    function Stat(name,val,max,min){
+        if(!(this instanceof Stat)) return new Stat(name,val,max,min); // Thanks jarofghostss
+        this.modifiers = [];
+        this.afterModifiers = [];
+        this._baseValue = val || 0;
+        if(max != null) this._max = max;
+        if(min != null) this._min = min;
+        this.name = name;
+    }
+    
+    Stat.prototype.increase = function(val){
+        this._baseValue += val;
+        this.clamp();
+        return this._baseValue;
+    };
+    
+    Stat.prototype.decrease = function(val){
+        this._baseValue -= val;
+        this.clamp();
+        return this._baseValue;
+    };
+    
+    Stat.prototype.change = function(val){
+        return val > 0 ? this.increase(val) : this.decrease(-val);
+    };
+    
+    Stat.prototype.baseValue = function(val,set){
+        if(set) this._baseValue = val;
+        else if(val !== undefined) this._baseValue += val;
+        this.clamp();
+        return this._baseValue;
+    };
+    
+    Stat.prototype.max = function(val,set){
+        if(arguments.length === 0) return this._max;
+        if(set || this._max === undefined) this._max = val;
+        else if(val) this._max += val;
+        this.clamp();
+        return this._max;
+    };
+    
+    Stat.prototype.isMax = function(val){
+        return this._max != null ? (this._baseValue === this._max) : false;
+    };
+    
+    Stat.prototype.min = function(val,set){
+        if(arguments.length === 0) return this._min;
+        if(set || this._min === undefined) this._min = val;
+        else if(val) this._min += val;
+        this.clamp();
+        return this._min;
+    };
+    
+    Stat.prototype.isMin = function(val){
+        return this._min != null ? (this._baseValue === this._min) : false;
+    };
+    
+    Stat.prototype.clamp = function(){
+        if( this._max != null && this._baseValue > this._max) this._baseValue = this._max;
+        if(this._min != null && this._baseValue < this._min) this._baseValue = this._min;
+    };
+    
+    Stat.prototype.isGreaterThan = function(stat,useTotal){
+        if(useTotal){
+            return this.getTotal() > stat.getTotal();
+        }
+        return this._baseValue > stat._baseValue;
+    };
+    
+    Stat.prototype.isLessThan = function(stat,useTotal){
+        if(useTotal){
+            return this.getTotal() < stat.getTotal();
+        }
+        return this._baseValue < stat._baseValue;
+    };
+    
+    Stat.prototype.isEqualTo = function(stat,fuzzy,useTotal){
+        if(useTotal){
+            return fuzzy ? Math.floor(this.getTotal()) === Math.floor(stat.getTotal()) : this.getTotal() === stat.getTotal();
+        }
+        return fuzzy ? Math.floor(this._baseValue) ===  Math.floor(stat._baseValue) : this._baseValue === stat._baseValue;
+    };
+    
+    Stat.prototype.add = function(stat, useTotal){
+        if(useTotal) return this.getTotal() + stat.getTotal();
+        return this.baseValue() + stat.baseValue();
+    };
+    
+    Stat.prototype.subtract = function(stat, useTotal){
+        if(useTotal) return this.getTotal() - stat.getTotal();
+        return this.baseValue() - stat.baseValue();
+    };
+    
+    Stat.prototype.multiply = function(stat, useTotal){
+        if(useTotal) return this.getTotal() * stat.getTotal();
+        return this.baseValue() * stat.baseValue();
+    };
+    
+    Stat.prototype.divide = function(stat, useTotal){
+        var st;
+        if(useTotal) {
+            st = stat.getTotal();
+            return this.getTotal() / (st > 0 ? st : 1 );
+        }
+        st = stat.baseValue();
+        return this.baseValue() / (st > 0 ? st : 1 );
+    };
+    
+    /*
+    * Add a modifier with a Flat or Percent Value value
+    * @param {String} type The type of modifier, flat or percentage
+    * @param {number|function} [value] Value to add. If its a function it will passed the stat object and owner. Functions are always calculated last
+    * @param {boolean} [before] Add the value after the main calculations. Default runs with the main calculations
+    * @return {object} The modifer object. Set destroy value when want to remove
+    */
+    Stat.prototype.addModifer = function(type,value,after){
+        var m = {
+            type : type,
+            value : value,
+            after : after || false,
+            destroy : false
+        };
+        if(_.isFunction(value) || after){
+            this.modifiers.unshift(m);
+            if(after) this.afterModifiers.push(after);
+        }else{
+            this.modifiers.push(m);
+        }
+        return m;
+    };
+    
+    Stat.prototype.getTotal = function(){
+        var i,
+            after = [],
+            perValues = 0,
+            t,
+            lv = 0,
+            len,
+            totals = {
+                flatTotal : 0,
+                totalAfterFlat : 0,
+                percentTotal : 0,
+                totalAfterPercent : 0,
+                total : 0
+            };
+        len = this.modifiers.length;
+        while(len--){
+            t = this.modifiers[len];
+            if(!t.destroy){
+                if(!t.after){
+                    if(_.isFunction(t.value)){
+                        totals[t.type+"Total"] += t.value(this);
+                    }else{
+                        totals[t.type+"Total"] += t.value;
+                    }
+                }else{
+                    after.push(t);
+                }
+            }else{
+                this.modifiers.splice(len,1);
+            }
+        }
+        if(after.length > 0){
+            for(i = 0; i < after.length; i++){
+                t = after[i];
+                t.value(this,totals);
+            }
+        }
+        totals.total += this._baseValue + totals.flatTotal;
+        totals.total += totals.total * (totals.percentTotal * 0.01);
+        if(this._min && totals.total < this._min){
+            totals.total = this._min;
+        }else if(this._max && totals.total > this._max){
+            totals.total = this._max;
+        }
+        return totals.total;
+    };
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = Stat;
+        root.Stat = Stat;
+    }else{
+        root.Stat = Stat;
+    }
+    
+}());
+},{"underscore":31}],25:[function(require,module,exports){
+(function(){
+    var root = this;
+    var ex = {};
+    var _ = require('underscore');
+    var utils = require('tneb/utils.js');
+    var events = {};
+    events.registeredEvents = {};
+    events._oldEvents = {};
+    events.registerEvent = function(name,cb,override){
+        var ret;
+        if(this.registeredEvents[name] && !override){
+            return "Event already registred!";
+        }
+        if(override && this.registeredEvents[name]){
+            events._oldEvents[name] = events._oldEvents[name] || [];
+            events._oldEvents[name].push(this.registeredEvents[name]);
+        }
+        ret = this.registeredEvents[name] = {
+            name : name,
+            callback : cb
+        };
+        return ret;
+    };
+    
+    function SpawnEvent(Game,enemy){
+        var m = Game.create.Enemy("Dickhead");
+        if(Game.systems.battle.active) return false;
+        Game.systems.battle.start(Game.activePlayer,m);
+        Game.global.events.trigger("system:event:"+this.toString());
+        return m;
+    }
+    SpawnEvent.prototype.toString = function(){return "SpawnEvent";};
+    ex = {
+        Events : events,
+        SpawnEvent : SpawnEvent
+    };
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = ex;
+        root.GameEvents = ex;
+    }else{
+        root.GameEvents = ex;
+    }
+}());
+},{"tneb/utils.js":30,"underscore":31}],26:[function(require,module,exports){
+(function(){
+    var root = this;
+    var utils = require('tneb/utils.js');
+    
+    /*
+    * All events for locaction come in the array format of : [Event,TimesCanHappen,Weight]
+    * Search : A 2darray of all possible events.
+    * Event : {
+    *   name : SpawnEvent
+    *   noticeText : You have encountered a {{char.name}}! Prepare for battle!!,
+    *   data : [] For system/predefined events. Will be supplied to as the arguments
+    *   }
+    */
+    function Location(data){
+        this.searchEvents = [[{
+            name : "SpawnEvent",
+            data : ["Derpy"]
+        }, 0, 1]];
+        this.searchWeights = this.getSearchWeights();
+    }
+    
+    Location.prototype.search = function(events){
+        var i = utils.weightedRandom(this.searchWeights);
+        var e = this.searchEvents[i];
+        var theEvent = events.registeredEvents[e.name];
+        if(theEvent){
+            theEvent.callback.apply(theEvent,e.data);
+        }
+    };
+    
+    Location.prototype.getSearchWeights = function(){
+        return this.searchEvents.map(function(e){
+            return e[2];
+        });
+    };
+    
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = Location;
+        root.Place = Location;
+    }else{
+        root.Place = Location;
+    }
+}());
+},{"tneb/utils.js":30}],27:[function(require,module,exports){
+(function(){
+    var modapi = {};
+    modapi.version = "0.0.1";
+    module.exports = modapi;
+}())
+},{}],28:[function(require,module,exports){
+(function(){
+    var root = this;
+    var $ = require('jQuery');
+    var _ = require('underscore');
+    var tmpl = require('tneb-templates/enemyBattleSlot.hbs');
+    var Stat = require('tneb/systems/battle/stat');
+    function UIBattleStats(controller, character, parent, wrapper){
+        this.character = character;
+        this.controller = controller;
+        this.template = tmpl;
+        this.parent = parent || document.body;
+        this.wrapper = wrapper || document.createElement('div');
+        this.parent.appendChild(this.wrapper);
+        this.$parent = $(this.parent);
+        this.$wrapper = $(this.wrapper);
+        this.$wrapper.html(tmpl(this.templateData));
+        this.createUiData();
+    }
+
+
+
+    UIBattleStats.prototype.createUiData = function() {
+        var base = this.$wrapper.find('.health-display');
+        var self = this;
+        this.uiData = {};
+        this.uiData.health = {
+            $el : base,
+            $name : base.find('.name'),
+            $bar : base.find('.bar'),
+            stat : self.character.stats.health
+        }
+        base = this.$wrapper.find('.mana-display');
+        this.uiData.mana = {
+            $el : base,
+            $name : base.find('.name'),
+            $bar : base.find('.bar'),
+            stat : self.character.stats.mana
+        }
+
+        base = this.$wrapper.find('.speed-display');
+        this.uiData.speed = {
+            $el : base,
+            $name : base.find('.name'),
+            $bar : base.find('.bar'),
+            stat : self.character.stats.speed
+        }
+        base = this.$wrapper.find('.name-display');
+        this.uiData.name = {
+            $el : base,
+            $name : base.find('.name'),
+            $prefix : base.find('.prefix')
+        }
+    };
+
+    UIBattleStats.prototype.update = function(){
+        
+    };
+
+    UIBattleStats.prototype.render = function(){
+        this.uiData.name.$name.text(this.controller.name);
+        this.uiData.health.$name.text(this.uiData.health.stat.name);
+        this.uiData.mana.$name.text(this.uiData.mana.stat.name);
+        this.uiData.speed.$name.text(this.uiData.speed.stat.name);
+
+        this.uiData.health.$bar.width( (this.uiData.health.stat.baseValue() / this.uiData.health.stat.max()) * 100 + "%");
+        this.uiData.mana.$bar.width( (this.uiData.mana.stat.baseValue() / this.uiData.mana.stat.max()) * 100 + "%");
+        this.uiData.speed.$bar.width( (this.uiData.speed.stat.baseValue() / this.uiData.speed.stat.max()) * 100 + "%");
+    };
+
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = UIBattleStats;
+    }
+    root.UIBattleStats = UIBattleStats;
+}());
+},{"jQuery":9,"tneb-templates/enemyBattleSlot.hbs":10,"tneb/systems/battle/stat":24,"underscore":31}],29:[function(require,module,exports){
+(function(){
+    var root = this;
+    var $ = require('jQuery');
+    var _ = require('underscore');
+    var tmpl = require('tneb-templates/playerSlot.hbs');
+    var Stat = require('tneb/systems/battle/stat');
+
+    function UIPlayerBattleStats(controller, character, parent, wrapper){
+        this.character = character;
+        this.controller = controller;
+        this.template = tmpl;
+        this.parent = parent || document.body;
+        this.wrapper = wrapper || document.createElement('div');
+        this.parent.appendChild(this.wrapper);
+        this.$parent = $(this.parent);
+        this.$wrapper = $(this.wrapper);
+        this.$wrapper.html(tmpl(this.templateData));
+        this.createUiData();
+    }
+
+
+
+    UIPlayerBattleStats.prototype.createUiData = function() {
+        var base = this.$wrapper.find('.health-display');
+        var self = this;
+        this.uiData = {};
+        this.uiData.health = {
+            $el : base,
+            $name : base.find('.name'),
+            $bar : base.find('.bar'),
+            stat : self.character.stats.health
+        };
+        base = this.$wrapper.find('.mana-display');
+        this.uiData.mana = {
+            $el : base,
+            $name : base.find('.name'),
+            $bar : base.find('.bar'),
+            stat : self.character.stats.mana
+        };
+
+        base = this.$wrapper.find('.exp-display');
+        this.uiData.exp = {
+            $el : base,
+            $name : base.find('.name'),
+            $bar : base.find('.bar'),
+            stat : self.character.stats.exp
+        };
+
+        base = this.$wrapper.find('.speed-display');
+        this.uiData.speed = {
+            $el : base,
+            $name : base.find('.name'),
+            $bar : base.find('.bar'),
+            stat : self.character.stats.speed
+        };
+        this.uiData.attackBtn = {
+            $el : self.$wrapper.find('.attack')
+        };
+
+        base = this.$wrapper.find('.name-display');
+        this.uiData.name = {
+            $el : base,
+            $name : base.find('.name'),
+            $title : base.find('.title')
+        }
+    };
+
+    UIPlayerBattleStats.prototype.update = function(){
+        
+    };
+
+    UIPlayerBattleStats.prototype.render = function(){
+        this.uiData.name.$name.text(this.controller.name);
+        this.uiData.name.$title.text(this.controller.name);
+        this.uiData.health.$name.text(this.uiData.health.stat.name);
+        this.uiData.mana.$name.text(this.uiData.mana.stat.name);
+        this.uiData.exp.$name.text(this.uiData.exp.stat.name);
+        this.uiData.speed.$name.text(this.uiData.speed.stat.name);
+
+        this.uiData.health.$bar.width( (this.uiData.health.stat.baseValue() / this.uiData.health.stat.max()) * 100 + "%");
+        this.uiData.mana.$bar.width( (this.uiData.mana.stat.baseValue() / this.uiData.mana.stat.max()) * 100 + "%");
+        this.uiData.exp.$bar.width( (this.uiData.exp.stat.baseValue() / this.uiData.exp.stat.max()) * 100 + "%");
+        this.uiData.speed.$bar.width( (this.uiData.speed.stat.baseValue() / this.uiData.speed.stat.max()) * 100 + "%");
+    };
+
+    UIPlayerBattleStats.prototype.enableAttackBtn = function(enabled){
+        this.uiData.attackBtn.$el.prop('disabled', enabled);
+    };
+
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = UIPlayerBattleStats;
+    }
+    root.UIPlayerBattleStats = UIPlayerBattleStats;
+}());
+},{"jQuery":9,"tneb-templates/playerSlot.hbs":11,"tneb/systems/battle/stat":24,"underscore":31}],30:[function(require,module,exports){
+(function(){
+    var _ = require('underscore');
+    var utils = {};
+    var root = this;
+    utils.objOverride = function(to,from,check){
+        _.each(from,function(v,k){
+            if(check && from[k]){
+                if(_.isObject(from[k]) || _.isArray(from[k]) ){
+                    utils.objOverride(to[k],from[k],check);
+                }else{
+                    to[k] = v;
+                }
+            }else{
+                if(_.isObject(from[k]) || _.isArray(from[k])){
+                    utils.objOverride(to[k],from[k],check);
+                }else{
+                    to[k] = v;
+                }
+            }
+        });
+        return to;
+    };
+    //http://codetheory.in/weighted-biased-random-number-generation-with-javascript-based-on-probability/
+    utils.weightedRandom = function(weights){
+        var totalWeight = weights.reduce(function(prev,cur){
+            return prev + cur;
+        });
+        var rand = _.random(0,totalWeight);
+        var weightSum = 0;
+        for(var i = 0; i < weights.length; i++){
+            weightSum += weights[i];
+            weightSum = +weightSum;
+            if(rand <= weightSum){
+                return i;
+            }
+        }
+    };
+
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = utils;
+        root.utils = utils;
+    }else{
+        root.utils = utils;
+    }
+}());
+},{"underscore":31}],31:[function(require,module,exports){
 //     Underscore.js 1.6.0
 //     http://underscorejs.org
 //     (c) 2009-2014 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
@@ -13733,1366 +13718,4 @@ return jQuery;
   }
 }).call(this);
 
-},{}],10:[function(require,module,exports){
-(function(){
-    var root = this;
-    var $ = require('jQuery');
-    var backbone = require('backbone');
-    var _ = require('underscore');
-    var config = require('tneb/etc/config.js');
-    var Character = require('tneb/systems/battle/character.js');
-    var Battle = require('tneb/systems/battle/battle.js');
-    var modApi = require('tneb/systems/mod/modapi.js');
-    var hook = require('tneb/systems/battle/hook.js');
-    var Create = require('tneb/create.js');
-    var Location = require('tneb/systems/map/location.js');
-    var events = require('tneb/systems/map/events.js');
-    var Player = require('tneb/player.js');
-    var logger = require('tneb/logger');
-    
-    var Game = {};
-    Game.systems = {};
-    Game.timer = {
-        elapsed : 1,
-        lastTime : 1
-    };
-    Game.global = {};
-    Game.global.events = {};
-    _.extend(Game.global.events,hook);
-    Game.init = function(){
-        Game.activePlayer = new Player(this);
-        Game.timer.lastTime = Date.now();
-        Game.loop();
-        Game.systems.battle = new Battle(this);
-        Game.create = Create(this);
-        alert("FATG");
-    };
-    
-    Game.update = function(){
-        _.each(Game.systems,function(v,k){
-            v.update();
-        });
-        this.activePlayer.update();
-    };
-    Game.render = function(){
-        _.each(Game.systems,function(v,k){
-            v.render(Game.activePlayer);
-        });
-        this.activePlayer.render();
-    };
-    Game.loop = function(){
-        Game.timer.elapsed = (Date.now() - Game.timer.lastTime) / 1000;
-        Game.update();
-        Game.render();
-        //Game.render();
-        Game.timeout = setTimeout(Game.loop,1000/config.fps);
-        Game.timer.lastTime = Date.now();
-    };
-    Game.init();
-    Game.version = "0.0.2";
-    if(typeof module !== 'undefined' && module.exports){
-        module.exports = Game;
-        root.Game = Game;
-    }else{
-        root.Game = Game;
-    }
-}());
-},{"backbone":1,"jQuery":8,"tneb/create.js":16,"tneb/etc/config.js":17,"tneb/logger":19,"tneb/player.js":20,"tneb/systems/battle/battle.js":21,"tneb/systems/battle/character.js":22,"tneb/systems/battle/hook.js":24,"tneb/systems/map/events.js":25,"tneb/systems/map/location.js":26,"tneb/systems/mod/modapi.js":27,"underscore":9}],11:[function(require,module,exports){
-(function () {
-    var root = this;
-    var _ = require('underscore');
-    var constants = require('tneb/etc/constants.js');
-    var config = require('tneb/etc/config.js');
-    
-    
-    /*
-    * Create a new calculator
-    * @param {Character} [user] to reference
-    */
-    function Calculator(user) {
-        this.user = user;
-    }
-    
-    /*
-    * Reduce value by Armor
-    * @param {Number} val The value to reduce
-    * @param {Object} [source] The character doing damage. Will take into account its penetration stats.
-    * @param {Object} [pen] Object containing extra penetration information
-    * @param {Number} [pen.percent.armor | pen.flat.armor] The actual penetration numbers 
-    * @return {Number} The new reduced value, will never be less than 0.
-    */
-    Calculator.prototype.reduceByArmor = function (val, source, pen) {
-        var percentApen = 0,
-            flatApen = 0,
-            armor = this.user.stats.armor.getTotal(),
-            total = val;
-        if (pen) {
-            if(pen.percent) percentApen += pen.percent.armor || 0;
-            if(pen.flat) flatApen += pen.flat.armor || 0;
-        }
-        if (source) {
-            percentApen += source.stats.penetration.percent.armor.getTotal();
-            flatApen += source.stats.penetration.flat.armor.getTotal();
-        }
-        armor -= armor * (percentApen * 0.01);
-        armor -= flatApen;
-        if(armor < 0) armor = 0;
-        total -= total * ( (armor * config.battle.armorMultiplier) * 0.01 );
-        return (total < 0 ? 0 : total);
-    };
-    
-    /*
-    * Reduce value by Magic Resistance
-    * @param {Number} val The value to reduce
-    * @param {Object} [source] The character doing damage. Will take into account its penetration stats.
-    * @param {Object} [pen] Object containing extra penetration information
-    * @param {Number} [pen.percent.magic | pen.flat.magic] The actual penetration numbers 
-    * @return {Number} The new reduced value, will never be less than 0.
-    */
-    Calculator.prototype.reduceByMagicResistance = function (val, source, pen) {
-        var percentMpen = 0,
-            flatMpen = 0,
-            magicRes = this.user.stats.magicRes.getTotal(),
-            total = val;
-        if (source) {
-            percentMpen += source.stats.penetration.percent.magic.getTotal();
-            flatMpen += source.stats.penetration.flat.magic.getTotal();
-        }
-        if (pen) {
-            if(pen.percent) percentMpen += pen.percent.magic || 0;
-            if(pen.flat) flatMpen += pen.flat.magic || 0;
-        }
-        magicRes -= magicRes * (percentMpen * 0.01);
-        magicRes -= flatMpen;
-        if(magicRes < 0) magicRes = 0;
-        total -= total * ((magicRes * config.battle.magicResMultiplier)* 0.01);
-        return (total < 0 ? 0 : total);
-    };
-    
-    /*
-    * Reduce value by Elemental  Resistance
-    * @param {String} el The element
-    * @param {Number} val The value to reduce
-    * @param {Object} [source] The character doing damage. Will take into account its penetration stats.
-    * @param {Object} [pen] Object containing extra penetration information
-    * @param {Number} [pen.percent.element | pen.flat.element] The actual penetration numbers 
-    * @return {Number} The new reduced value, will never be less than 0.
-    */
-    Calculator.prototype.reduceByElementalResistance = function (el, val, source, pen) {
-        var percentResPen = 0,
-            flatResPen = 0,
-            res = this.user.stats.resistances[el].getTotal(),
-            total = val;
-        if (source) {
-            percentResPen += source.stats.penetration.percent[el].getTotal();
-            flatResPen += source.stats.penetration.flat[el].getTotal();
-        }
-        if (pen) {
-            if(pen.percent) percentResPen = pen.percent[el] || 0;
-            if(pen.flat) flatResPen = pen.flat[el] || 0;
-        }
-        res -= res * (percentResPen * 0.01);
-        res -= flatResPen;
-        if(res < 0) res = 0;
-        total -= total * ((res * config.battle.elementalResMultiplier) * 0.01);
-        return (total < 0 ? 0 : total);
-    };
-    if(typeof module !== 'undefined' && module.exports){
-        module.exports = Calculator;
-        root.Calculator = Calculator;
-    }else{
-        root.Calculator = Calculator;
-    }
-
-}());
-},{"tneb/etc/config.js":17,"tneb/etc/constants.js":18,"underscore":9}],12:[function(require,module,exports){
-(function () {
-    var root = this;
-    var _ = require('underscore');
-    var utils = require('tneb/utils.js');
-    var constants = require('tneb/etc/constants.js');
-    var config = require('tneb/etc/config.js');
-    var Calculator = require('./calculator.js');
-    var Stat = require('./stat.js');
-
-    function Character(data,name, Game) {
-        var stats = Character.prototype.getDefaultStats();
-        this.calculator = new Calculator(this);
-        this.isAi = true;
-        if (_.isObject(data)) {
-            utils.objOverride(stats, data);
-        }
-        this.convertToStatObj(stats);
-        this.stats = stats;
-        this.equipped = {
-            head: null,
-            top: null,
-            leftHand: null,
-            rightHand: null,
-            feet: null,
-            bottom: null,
-            accessory: null
-        };
-        this.inventory = [];
-        this.skills = [];
-        this.battleRating = 0;
-        if(_.isObject(name)){
-            this.Game = name;
-            this.name = "Default name";
-        }else{
-            this.Game = Game;
-            this.name = name;
-        }
-    }
-    
-    Character.prototype.convertToStatObj = function(stats){
-        stats.health = new Stat(constants.stats.health,stats.health,stats.health,0);
-        stats.level = new Stat(constants.stats.level, stats.level, config.maxLevel);
-        stats.armor = new Stat(constants.stats.armor,stats.armor);
-        stats.magicRes = new Stat(constants.stats.magicRes,stats.magicRes);
-        stats.mana = new Stat(constants.stats.mana, stats.mana);
-        stats.healthRegen = new Stat(constants.stats.healthRegen, stats.healthRegen);
-        stats.manaRegen = new Stat(constants.stats.manaRegen, stats.manaRegen);
-        stats.physicalPower = new Stat(constants.stats.physicalPower, stats.physicalPower);
-        stats.magicalPower = new Stat(constants.stats.magicalPower, stats.magicalPower);
-        
-        stats.str = new Stat(constants.stats.str, stats.str);
-        stats.int = new Stat(constants.stats.int, stats.int);
-        stats.dex = new Stat(constants.stats.dex, stats.dex);
-        stats.luk = new Stat(constants.stats.luk, stats.luk);
-        
-        stats.resistances.fire = new Stat(constants.stats.fireRes, stats.resistances.fire);
-        stats.resistances.ice = new Stat(constants.stats.iceRes, stats.resistances.ice);
-        stats.resistances.elec = new Stat(constants.stats.elecRes, stats.resistances.elec);
-        stats.resistances.water = new Stat(constants.stats.waterRes, stats.resistances.water);
-        stats.resistances.earth = new Stat(constants.stats.earthRes, stats.resistances.earth);
-        stats.resistances.wind = new Stat(constants.stats.windRes, stats.resistances.wind);
-        stats.resistances.light = new Stat(constants.stats.lightRes, stats.resistances.light);
-        stats.resistances.dark = new Stat(constants.stats.darkRes, stats.resistances.dark);
-        
-        stats.speedGain = new Stat(constants.stats.speedGain, stats.speedGain);
-        stats.speed = new Stat(constants.stats.speed, stats.speed, config.battle.maxSpeed);
-        
-        stats.penetration.flat.fire = new Stat(constants.stats.penetration.flat.fire, stats.penetration.flat.fire);
-        stats.penetration.flat.ice = new Stat(constants.stats.penetration.flat.ice, stats.penetration.flat.ice);
-        stats.penetration.flat.elec = new Stat(constants.stats.penetration.flat.elec, stats.penetration.flat.elec);
-        stats.penetration.flat.water = new Stat(constants.stats.penetration.flat.water, stats.penetration.flat.water);
-        stats.penetration.flat.earth = new Stat(constants.stats.penetration.flat.earth, stats.penetration.flat.earth);
-        stats.penetration.flat.wind = new Stat(constants.stats.penetration.flat.wind, stats.penetration.flat.wind);
-        stats.penetration.flat.light = new Stat(constants.stats.penetration.flat.light, stats.penetration.flat.light);
-        stats.penetration.flat.dark = new Stat(constants.stats.penetration.flat.dark, stats.penetration.flat.dark);
-        stats.penetration.flat.armor = new Stat(constants.stats.penetration.flat.armor, stats.penetration.flat.armor);
-        stats.penetration.flat.magic = new Stat(constants.stats.penetration.flat.magic, stats.penetration.flat.magic);
-        
-        stats.penetration.percent.fire = new Stat(constants.stats.penetration.percent.fire, stats.penetration.percent.fire);
-        stats.penetration.percent.ice = new Stat(constants.stats.penetration.percent.ice, stats.penetration.percent.ice);
-        stats.penetration.percent.elec = new Stat(constants.stats.penetration.percent.elec, stats.penetration.percent.elec);
-        stats.penetration.percent.water = new Stat(constants.stats.penetration.percent.water, stats.penetration.percent.water);
-        stats.penetration.percent.earth = new Stat(constants.stats.penetration.percent.earth, stats.penetration.percent.earth);
-        stats.penetration.percent.wind = new Stat(constants.stats.penetration.percent.wind, stats.penetration.percent.wind);
-        stats.penetration.percent.light = new Stat(constants.stats.penetration.percent.light, stats.penetration.percent.light);
-        stats.penetration.percent.dark = new Stat(constants.stats.penetration.percent.dark, stats.penetration.percent.dark);
-        stats.penetration.percent.armor = new Stat(constants.stats.penetration.percent.armor, stats.penetration.percent.armor);
-        stats.penetration.percent.magic = new Stat(constants.stats.penetration.percent.magic, stats.penetration.percent.magic);
-        
-
-    };
-
-    Character.prototype.doAction = function (target) {
-        if (this.isAi) {
-            return this.aiAction(target);
-        }
-    };
-
-    Character.prototype.aiAction = function (target) {
-        this.useSkill(this.basicAttack(), target);
-    };
-
-    Character.prototype.useSkill = function (skill, target) {
-        if (!skill.cost(this, target)) return false;
-        this.Game.global.events.trigger('system:battle:cast:skill', skill, this, target);
-        skill.use(this, target);
-    };
-
-    Character.prototype.basicAttack = function () {
-        if (this.basicAttackSkill) return this.basicAttackSkill;
-        var damage;
-        var skill = {
-            name: 'Basic Attack'
-        };
-        damage = {
-            type: constants.damageTypes.physical,
-            beforeRes: 0
-        };
-        skill.use = function (user, target) {
-            damage.beforeRes = user.stats.physicalPower.getTotal() + (user.stats.str.getTotal() * 0.65);
-            return target.applyDamage({
-                skill: this,
-                user: user,
-                target: target
-            }, damage);
-        };
-        skill.cost = function () {
-            return true;
-        };
-        this.basicAttackSkill = skill;
-        return skill;
-    };
-
-    // damage = {type : physical, el : fire, beforeRes : 10, afterRes : 10, callback : f(dealt,battleIngo,damge)}
-    //source = {skill : skill, user : user, target : target}
-
-    /**
-     * Applys damage to the character(itself not the supplied source)
-     * @param {Object} source Contains refrences to the damage source.
-     * @param {Object} source.skill The skill being used
-     * @param {Character} source.user The user or owner
-     * @param {Character} source.target The target
-     * @param {Object} damage The damage object
-     * @param {String} damage.type The type of damage
-     * @param [String] damage.element The element of the damage
-     * @param {function|number} damage.beforeRes The damage before resistences are applied
-     * @param {function|number} damage.afterRes The damage after resistances are applied
-     * @param [function] damage.callback A callback that is invoked after damage is calculated but before its applied.
-     * @return {Number} The damage dealth
-     */
-    Character.prototype.applyDamage = function (source, damage) {
-        var i,
-            d,
-            el,
-            total = 0;
-        el = damage.element || constants.elements.neutral;
-        if (!damage.pure && damage.type === constants.damageTypes.physical) {
-            if (el === constants.elements.neutral) {
-                total = this.calculator.reduceByArmor(damage.beforeRes, source.user, damage.penObj);
-            } else {
-                total = this.calculator.reduceByElementalResistance(
-                    el,
-                    this.calculator.calculateArmorReduction(damage.beforeRes, damage.penObj),
-                    source.user,
-                    damage.penObj
-                );
-            }
-        } else if (!damage.pure && damage.type === constants.damageTypes.magical) {
-            if (el === constants.elements.neutral) {
-                total = this.calculator.reduceByMagicResistance(damage.beforeRes, source.user, damage);
-            } else {
-                total = this.calculator.reduceByElementalResistance(
-                    el,
-                    this.calculator.reduceByMagicResistance(damage.beforeRes, source.user, damage.penObj),
-                    source.user,
-                    damage.penObj
-                );
-            }
-        } else {
-            total += damage.beforeRes;
-        }
-        total += damage.afterRes ? damage.afterRes(source) : 0;
-        this.takeDamage(total, damage.type, el, damage.isPure);
-        if (damage.callback) damage.callback(total, damage, source);
-        return total;
-    };
-
-    Character.prototype.takeDamage = function (val, type, el, pure) {
-        this.changeHealth(-val);
-        this.Game.global.events.trigger('system:battle:takenDamage:', val, type, el, pure);
-    };
-
-    Character.prototype.changeHealth = function (val) {
-        this.stats.health.change(val);
-        if (this.stats.health.baseValue() < 1) {
-            this.Game.global.events.trigger('system:character:death', this);
-        }
-    };
-
-    Character.prototype.getDefaultStats = function () {
-        var max = 5;
-        var sRand = _.random(0, max);
-        var iRand = _.random(0, max);
-        var lRand = _.random(0, max);
-        var dRand = _.random(0, max);
-        return {
-            level: 1,
-            health: 20,
-            mana: 6,
-            str: 5,
-            int: 5,
-            dex: 5,
-            luk: 5,
-            armor: 1,
-            physicalPower: 0,
-            magicalPower: 0,
-            magicRes: 0.2,
-            speed: 50,
-            speedGain: 100,
-            healthRegen: 0.2, // Internally represented as per second but displayed as per 5 to the player
-            manaRegen: 0.125,
-
-            resistances : {
-                fire: 0,
-                ice: 0,
-                water: 0,
-                elec: 0,
-                earth: 0,
-                wind: 0,
-                light: 0,
-                dark: 0,
-            },
-
-            penetration: {
-                percent: {
-                    armor: 0,
-                    magic: 0,
-                    fire: 0,
-                    ice: 0,
-                    water: 0,
-                    elec: 0,
-                    earth: 0,
-                    wind: 0,
-                    light: 0,
-                    dark: 0
-                },
-                flat: {
-                    armor: 0,
-                    magic: 0,
-                    fire: 0,
-                    ice: 0,
-                    water: 0,
-                    elec: 0,
-                    earth: 0,
-                    wind: 0,
-                    light: 0,
-                    dark: 0
-                }
-            }
-        };
-    };
-
-    if(typeof module !== 'undefined' && module.exports){
-        module.exports = Character;
-        root.Character = Character;
-    }else{
-        root.Character = Character;
-    }
-}());
-},{"./calculator.js":11,"./stat.js":13,"tneb/etc/config.js":17,"tneb/etc/constants.js":18,"tneb/utils.js":29,"underscore":9}],13:[function(require,module,exports){
-(function(){
-    var root = this;
-    var _ = require('underscore');
-    function Stat(name,val,max,min){
-        if(!(this instanceof Stat)) return new Stat(name,val,max,min); // Thanks jarofghosts
-        this.modifiers = [];
-        this.afterModifiers = [];
-        this._baseValue = val || 0;
-        if(max != null) this._max = max;
-        if(min != null) this._min = min;
-    }
-    
-    Stat.prototype.increase = function(val){
-        this._baseValue += val;
-        this.clamp();
-        return this._baseValue;
-    };
-    
-    Stat.prototype.decrease = function(val){
-        this._baseValue -= val;
-        this.clamp();
-        return this._baseValue;
-    };
-    
-    Stat.prototype.change = function(val){
-        return val > 0 ? this.increase(val) : this.decrease(-val);
-    };
-    
-    Stat.prototype.baseValue = function(val,set){
-        if(set) this._baseValue = val;
-        else if(val !== undefined) this._baseValue += val;
-        this.clamp();
-        return this._baseValue;
-    };
-    
-    Stat.prototype.max = function(val,set){
-        if(arguments.length === 0) return this._max;
-        if(set || this._max === undefined) this._max = val;
-        else if(val) this._max += val;
-        this.clamp();
-        return this._max;
-    };
-    
-    Stat.prototype.isMax = function(val){
-        return this._max != null ? (this._baseValue === this._max) : false;
-    };
-    
-    Stat.prototype.min = function(val,set){
-        if(arguments.length === 0) return this._min;
-        if(set || this._min === undefined) this._min = val;
-        else if(val) this._min += val;
-        this.clamp();
-        return this._min;
-    };
-    
-    Stat.prototype.isMin = function(val){
-        return this._min != null ? (this._baseValue === this._min) : false;
-    };
-    
-    Stat.prototype.clamp = function(){
-        if( this._max != null && this._baseValue > this._max) this._baseValue = this._max;
-        if(this._min != null && this._baseValue < this._min) this._baseValue = this._min;
-    };
-    
-    Stat.prototype.isGreaterThan = function(stat,useTotal){
-        if(useTotal){
-            return this.getTotal() > stat.getTotal();
-        }
-        return this._baseValue > stat._baseValue;
-    };
-    
-    Stat.prototype.isLessThan = function(stat,useTotal){
-        if(useTotal){
-            return this.getTotal() < stat.getTotal();
-        }
-        return this._baseValue < stat._baseValue;
-    };
-    
-    Stat.prototype.isEqualTo = function(stat,fuzzy,useTotal){
-        if(useTotal){
-            return fuzzy ? Math.floor(this.getTotal()) === Math.floor(stat.getTotal()) : this.getTotal() === stat.getTotal();
-        }
-        return fuzzy ? Math.floor(this._baseValue) ===  Math.floor(stat._baseValue) : this._baseValue === stat._baseValue;
-    };
-    
-    Stat.prototype.add = function(stat, useTotal){
-        if(useTotal) return this.getTotal() + stat.getTotal();
-        return this.baseValue() + stat.baseValue();
-    };
-    
-    Stat.prototype.subtract = function(stat, useTotal){
-        if(useTotal) return this.getTotal() - stat.getTotal();
-        return this.baseValue() - stat.baseValue();
-    };
-    
-    Stat.prototype.multiply = function(stat, useTotal){
-        if(useTotal) return this.getTotal() * stat.getTotal();
-        return this.baseValue() * stat.baseValue();
-    };
-    
-    Stat.prototype.divide = function(stat, useTotal){
-        var st;
-        if(useTotal) {
-            st = stat.getTotal();
-            return this.getTotal() / (st > 0 ? st : 1 );
-        }
-        st = stat.baseValue();
-        return this.baseValue() / (st > 0 ? st : 1 );
-    };
-    
-    /*
-    * Add a modifier with a Flat or Percent Value value
-    * @param {String} type The type of modifier, flat or percentage
-    * @param {number|function} [value] Value to add. If its a function it will passed the stat object and owner. Functions are always calculated last
-    * @param {boolean} [before] Add the value after the main calculations. Default runs with the main calculations
-    * @return {object} The modifer object. Set destroy value when want to remove
-    */
-    Stat.prototype.addModifer = function(type,value,after){
-        var m = {
-            type : type,
-            value : value,
-            after : after || false,
-            destroy : false
-        };
-        if(_.isFunction(value) || after){
-            this.modifiers.unshift(m);
-            if(after) this.afterModifiers.push(after);
-        }else{
-            this.modifiers.push(m);
-        }
-        return m;
-    };
-    
-    Stat.prototype.getTotal = function(){
-        var i,
-            after = [],
-            perValues = 0,
-            t,
-            lv = 0,
-            len,
-            totals = {
-                flatTotal : 0,
-                totalAfterFlat : 0,
-                percentTotal : 0,
-                totalAfterPercent : 0,
-                total : 0
-            };
-        len = this.modifiers.length;
-        while(len--){
-            t = this.modifiers[len];
-            if(!t.destroy){
-                if(!t.after){
-                    if(_.isFunction(t.value)){
-                        totals[t.type+"Total"] += t.value(this);
-                    }else{
-                        totals[t.type+"Total"] += t.value;
-                    }
-                }else{
-                    after.push(t);
-                }
-            }else{
-                this.modifiers.splice(len,1);
-            }
-        }
-        if(after.length > 0){
-            for(i = 0; i < after.length; i++){
-                t = after[i];
-                t.value(this,totals);
-            }
-        }
-        totals.total += this._baseValue + totals.flatTotal;
-        totals.total += totals.total * (totals.percentTotal * 0.01);
-        if(this._min && totals.total < this._min){
-            totals.total = this._min;
-        }else if(this._max && totals.total > this._max){
-            totals.total = this._max;
-        }
-        return totals.total;
-    };
-    if(typeof module !== 'undefined' && module.exports){
-        module.exports = Stat;
-        root.Stat = Stat;
-    }else{
-        root.Stat = Stat;
-    }
-    
-}());
-},{"underscore":9}],14:[function(require,module,exports){
-// Create a simple path alias to allow browserify to resolve
-// the runtime on a supported path.
-module.exports = require('./dist/cjs/handlebars.runtime');
-
-},{"./dist/cjs/handlebars.runtime":2}],15:[function(require,module,exports){
-module.exports = require("handlebars/runtime")["default"];
-
-},{"handlebars/runtime":14}],16:[function(require,module,exports){
-(function(){
-    var root = this;
-    var create;
-    var Character = require('tneb/systems/battle/character.js');
-    var Enemy = require('tneb/systems/battle/enemy.js');
-    function Create(){
-        if(create) return create;
-        create = {};
-        create.Enemy = function(name){
-            var ret = new Enemy({name : name});
-            return ret;
-        };
-        return create;
-    }
-    if(typeof module !== 'undefined' && module.exports){
-        module.exports = Create;
-        root.Create = Create;
-    }else{
-        root.Create = Create;
-    }
-}());
-},{"tneb/systems/battle/character.js":22,"tneb/systems/battle/enemy.js":23}],17:[function(require,module,exports){
-(function(){
-    // silly dance party
-    var root = this;
-    var config = {};
-    config.battle = {
-        armorMultiplier : 0.04,
-        magicResMultiplier : 0.06,
-        elementalResMultiplier : 0.015,
-        maxSpeed : 100
-    };
-    
-    if(typeof module !== 'undefined' && module.exports){
-        module.exports = config;
-        root.config = config;
-    }else{
-        root.config = config;
-    }
-}());
-},{}],18:[function(require,module,exports){
-(function () {
-    var root = this;
-    var constants = {};
-    constants.damageTypes = {
-        physical: 'physical',
-        magical: 'magical',
-        pure: 'pure',
-        hpRemoval: 'hpRemoval',
-        manaRemoval: 'manaRemoval'
-    };
-    constants.elements = {
-        neutral: 'neutral',
-        fire: 'fire',
-        ice: 'ice',
-        water: 'water',
-        elec: 'electric',
-        light: 'light',
-        dark: 'dark',
-        earth: 'earth',
-        wind: 'wind'
-    };
-
-    constants.stats = {
-        fireRes: "Fire Res",
-        iceRes: "Ice Res",
-        elecRes: "Elec Res",
-        waterRes: "Water Res",
-        earthRes: "Earth Res",
-        windRes: "Wind Res",
-        lightRes: "Light Res",
-        darkRes: "Dark Res",
-        str: "Str",
-        dex: "Dex",
-        int: "Int",
-        luk: "Luk",
-        magicalPower : "Magical Power",
-        physicalPower : "Physical Power",
-        health: "Health",
-        mana: "Mana",
-        healthRegen: "Health Regen",
-        manaRegen: "Mana Regen",
-        speed: "Speed",
-        speedGain: "Speed Gain",
-        penetration: {
-            percent: {
-                armor: "Percent Armor Penetration",
-                magic: "Percent Magic Penetration",
-                fire: "Percent Fire Penetration",
-                ice: "Percent Ice Penetration",
-                water:"Percent Water Penetration",
-                elec: "Percent Electrical Penetration",
-                earth: "Percent Earth Penetration",
-                wind: "Percent Wind Penetration",
-                light: "Percent Light Penetration",
-                dark: "Percent Dark Penetration"
-            },
-            flat: {
-                armor: "Flat Armor Penetration",
-                magic: "Flat Magic Penetration",
-                fire: "Flat Fire Penetration",
-                ice: "Flat Ice Penetration",
-                water:"Flat Water Penetration",
-                elec: "Flat Electrical Penetration",
-                earth: "Flat Earth Penetration",
-                wind: "Flat Wind Penetration",
-                light: "Flat Light Penetration",
-                dark: "Flat Dark Penetration"
-            }
-        }
-    };
-
-    if(typeof module !== 'undefined' && module.exports){
-        module.exports = constants;
-        root.constants = constants;
-    }else{
-        root.constants = constants;
-    }
-}());
-},{}],19:[function(require,module,exports){
-(function(){
-    var root = this;
-    var $ = require('jQuery');
-    var GameLogger = {};
-    var el;
-    GameLogger.displayList = [];
-    GameLogger.currentMessages = [];
-    GameLogger.fullLog = [];
-    GameLogger.el = $("#logger");
-    GameLogger.maxMessages = 8;
-    el = GameLogger.el;
-    GameLogger.log = function(type,message){
-        var curTime = Date.now(),
-            len;
-        this.fullLog.push({message : message, timestamp : curTime, type : type});
-        this.currentMessages.push({message : message, timestamp : curTime, type : type});
-        if(this.currentMessages.length > this.maxMessages){
-            this.currentMessages.splice(0,1);
-        }
-        len = this.currentMessages.length;
-        while(len--){
-            this.displayList[len].innerHTML = this.currentMessages[len].message;
-        }
-    };
-    for(var i = 0; i < GameLogger.maxMessages; i++){
-        var p = document.createElement('p');
-        GameLogger.displayList.push(p);
-        el.append(p);
-    }
-    
-    if(typeof module !== 'undefined' && module.exports){
-        module.exports = GameLogger;
-    }
-    root.GameLogger = GameLogger;
-}());
-},{"jQuery":8}],20:[function(require,module,exports){
-(function(){
-    var root = this;
-    var Character = require('tneb/systems/battle/character.js');
-    var $ = require('jQuery');
-    var randomNames = ["Sammy", "Villy", "Azarath", "Metrion", "Zinthos",
-                       "Flying Watermelon", "Blue", "Meteor", "Lion Rabbit",
-                       "Robotmayo", "SJVellenga", "Antlong", "MoragX", "tangentialThinker","waffleyone",
-                      "Muffer-Nl", "gamehelp16", "firewires"];
-    var _ = require('underscore');
-    var UICharacter = require('tneb/ui/uicharacter.js');
-    function Player(Game){
-        this.party = [new Character(null,Game)];
-        this.ui = new UICharacter(this.party[0], document.getElementById("party-battle-stats"));
-        this.Game = Game;
-        this.name = _.sample(randomNames,1);
-        this.lastFrame = {};
-        this.inBattle = false;
-        this.Game.global.events.on("battle:start", function(){
-            this.inBattle = true;
-        });
-    }
-    
-    Player.prototype.update = function(){
-        this.ui.update();
-    };
-    
-    Player.prototype.render = function(){
-
-    };
-    
-    if(typeof module !== 'undefined' && module.exports){
-        module.exports = Player;
-    }else{
-        root.Player = Player;
-    }
-
-}());
-},{"jQuery":8,"tneb/systems/battle/character.js":22,"tneb/ui/uicharacter.js":28,"underscore":9}],21:[function(require,module,exports){
-(function () {
-    var _ = require('underscore');
-    var $ = require('jQuery');
-    var root = this;
-
-    function Battle(Game) {
-        this.log = [];
-        this.fighterA;
-        this.fighterB;
-        this.Game = Game;
-        this.active = false;
-        this.init();
-    }
-    Battle.version = "0.0.1";
-    Battle.prototype.init = function () {
-        this.Game.global.events.trigger('battle:systemInit');
-        //this.initUi();
-    };
-
-    Battle.prototype.update = function () {
-        if (!this.active) return;
-        var fasg = this.fighterA.stats.speedGain.getTotal() * this.Game.timer.elapsed;
-        // I originally was going to abbrivate as FighterAspeedGain but that seemed like a bad idea.
-        var fbsg = this.fighterA.stats.speedGain.getTotal() * this.Game.timer.elapsed;
-        this.fighterA.stats.speed.increase(fasg);
-        this.fighterB.stats.speed.increase(fbsg);
-
-        if (this.fighterA.stats.speed.isMax()) {
-            this.actionQueue.push([this.fighterA, this.fighterB]);
-        }
-
-        if (this.fighterB.stats.speed.isMax()) {
-            if (this.actionQueue.length > 0 && (this.fighterA.stats.speed.max() - fasg) < (this.fighterB.stats.speed.max() - fbsg)) {
-                this.actionQueue.push([this.fighterB, this.fighterA]);
-            } else {
-                this.actionQueue.unshift([this.fighterB, this.fighterA]);
-            }
-        }
-
-        if (this.actionQueue.length) {
-            var len = this.actionQueue.length;
-            while (len-- && this.active) {
-                this.actionQueue[len][0].doAction(this.actionQueue[len][1]);
-                this.actionQueue[len][0].stats.speed.baseValue(0);
-                this.actionQueue.pop();
-            }
-        }
-    };
-
-    Battle.prototype.end = function () {
-        this.active = false;
-        return true;
-    };
-
-
-    Battle.prototype.render = function (player, enemy) {
-        
-    };
-
-    Battle.prototype.start = function (fighterA, fighterB, conditions) {
-        this.clear();
-        if (!fighterA || !fighterB) return false;
-        this.fighterA = fighterA;
-        this.fighterB = fighterB;
-        this.Game.global.events.trigger('system:battle:start', this);
-        this.active = true;
-        fighterA.stats.speed.baseValue(0);
-        fighterB.stats.speed.baseValue(0);
-        this.update();
-        this.Game.global.events.once("system:character:death", this.end,this);
-        return this.active;
-    };
-
-    Battle.prototype.clear = function () {
-        this.actionQueue = [];
-        this.allCharacters = [];
-    };
-    if (typeof module !== 'undefined' && module.exports) {
-        module.exports = Battle;
-        root.Battle = Battle;
-    } else {
-        root.Battle = Battle;
-    }
-}());
-},{"jQuery":8,"underscore":9}],22:[function(require,module,exports){
-module.exports=require(12)
-},{"./calculator.js":11,"./stat.js":13,"tneb/etc/config.js":17,"tneb/etc/constants.js":18,"tneb/utils.js":29,"underscore":9}],23:[function(require,module,exports){
-(function(){
-    var root = this;
-    var Character = require('./character.js');
-    
-    function Enemy(){
-        Character.apply(this,arguments);
-    }
-    
-    Enemy.prototype = Character.prototype;
-    if(typeof module !== 'undefined' && module.exports){
-        module.exports = Enemy;
-        
-        root.Enemy = Enemy;
-    }else{
-        root.Enemy = Enemy;
-    }
-}());
-},{"./character.js":12}],24:[function(require,module,exports){
-(function () {
-    var root = this;
-    var _ = require('underscore');
-    var pEvents = {};
-    // Regular expression used to split event strings.
-    var eventSplitter = /\s+/;
-
-    // Implement fancy features of the Events API such as multiple event
-    // names `"change blur"` and jQuery-style event maps `{change: action}`
-    // in terms of the existing API.
-    var eventsApi = function (obj, action, name, rest) {
-        if (!name) return true;
-
-        // Handle event maps.
-        if (typeof name === 'object') {
-            for (var key in name) {
-                obj[action].apply(obj, [key, name[key]].concat(rest));
-            }
-            return false;
-        }
-
-        // Handle space separated event names.
-        if (eventSplitter.test(name)) {
-            var names = name.split(eventSplitter);
-            for (var i = 0, length = names.length; i < length; i++) {
-                obj[action].apply(obj, [names[i]].concat(rest));
-            }
-            return false;
-        }
-
-        return true;
-    };
-    // A difficult-to-believe, but optimized internal dispatch function for
-    // triggering events. Tries to keep the usual cases speedy (most internal
-    // Backbone events have 3 arguments).
-    var triggerEvents = function (events, args) {
-        var ev, i = -1,
-            l = events.length,
-            a1 = args[0],
-            a2 = args[1],
-            a3 = args[2];
-        switch (args.length) {
-        case 0:
-            while (++i < l)(ev = events[i]).callback.call(ev.ctx);
-            return;
-        case 1:
-            while (++i < l)(ev = events[i]).callback.call(ev.ctx, a1);
-            return;
-        case 2:
-            while (++i < l)(ev = events[i]).callback.call(ev.ctx, a1, a2);
-            return;
-        case 3:
-            while (++i < l)(ev = events[i]).callback.call(ev.ctx, a1, a2, a3);
-            return;
-        default:
-            while (++i < l)(ev = events[i]).callback.apply(ev.ctx, args);
-            return;
-        }
-    };
-    var Events = {
-
-        // Bind an event to a `callback` function. Passing `"all"` will bind
-        // the callback to all events fired.
-        on: function (name, callback, context, priority) {
-            if (!eventsApi(this, 'on', name, [callback, context]) || !callback) return this;
-            this._events || (this._events = {});
-            var events = this._events[name] || (this._events[name] = []);
-            events.push({
-                callback: callback,
-                context: context,
-                ctx: context || this,
-                priority : priority
-            });
-            if(null == priority) priority = 500;
-            events.sort(function(a,b){return a.priority-b.priority;});
-            return this;
-        },
-
-        // Bind an event to only be triggered a single time. After the first time
-        // the callback is invoked, it will be removed.
-        once: function (name, callback, context) {
-            if (!eventsApi(this, 'once', name, [callback, context]) || !callback) return this;
-            var self = this;
-            var once = _.once(function () {
-                self.off(name, once);
-                callback.apply(this, arguments);
-            });
-            once._callback = callback;
-            return this.on(name, once, context);
-        },
-
-        // Remove one or many callbacks. If `context` is null, removes all
-        // callbacks with that function. If `callback` is null, removes all
-        // callbacks for the event. If `name` is null, removes all bound
-        // callbacks for all events.
-        off: function (name, callback, context) {
-            if (!this._events || !eventsApi(this, 'off', name, [callback, context])) return this;
-
-            // Remove all callbacks for all events.
-            if (!name && !callback && !context) {
-                this._events = void 0;
-                return this;
-            }
-
-            var names = name ? [name] : _.keys(this._events);
-            for (var i = 0, length = names.length; i < length; i++) {
-                name = names[i];
-
-                // Bail out if there are no events stored.
-                var events = this._events[name];
-                if (!events) continue;
-
-                // Remove all callbacks for this event.
-                if (!callback && !context) {
-                    delete this._events[name];
-                    continue;
-                }
-
-                // Find any remaining events.
-                var remaining = [];
-                for (var j = 0, k = events.length; j < k; j++) {
-                    var event = events[j];
-                    if (
-                        callback && callback !== event.callback &&
-                        callback !== event.callback._callback ||
-                        context && context !== event.context
-                    ) {
-                        remaining.push(event);
-                    }
-                }
-
-                // Replace events if there are any remaining.  Otherwise, clean up.
-                if (remaining.length) {
-                    this._events[name] = remaining;
-                } else {
-                    delete this._events[name];
-                }
-            }
-
-            return this;
-        },
-
-        // Trigger one or many events, firing all bound callbacks. Callbacks are
-        // passed the same arguments as `trigger` is, apart from the event name
-        // (unless you're listening on `"all"`, which will cause your callback to
-        // receive the true name of the event as the first argument).
-        trigger: function (name) {
-            if (!this._events) return this;
-            var args = Array.prototype.slice.call(arguments, 1);
-            if (!eventsApi(this, 'trigger', name, args)) return this;
-            var events = this._events[name];
-            var allEvents = this._events.all;
-            if (events) triggerEvents(events, args);
-            if (allEvents) triggerEvents(allEvents, arguments);
-            return this;
-        },
-
-        // Tell this object to stop listening to either specific events ... or
-        // to every object it's currently listening to.
-        stopListening: function (obj, name, callback) {
-            var listeningTo = this._listeningTo;
-            if (!listeningTo) return this;
-            var remove = !name && !callback;
-            if (!callback && typeof name === 'object') callback = this;
-            if (obj)(listeningTo = {})[obj._listenId] = obj;
-            for (var id in listeningTo) {
-                obj = listeningTo[id];
-                obj.off(name, callback, this);
-                if (remove || _.isEmpty(obj._events)) delete this._listeningTo[id];
-            }
-            return this;
-        }
-
-    };
-    var listenMethods = {
-        listenTo: 'on',
-        listenToOnce: 'once'
-    };
-
-    // Inversion-of-control versions of `on` and `once`. Tell *this* object to
-    // listen to an event in another object ... keeping track of what it's
-    // listening to.
-    _.each(listenMethods, function (implementation, method) {
-        Events[method] = function (obj, name, callback) {
-            var listeningTo = this._listeningTo || (this._listeningTo = {});
-            var id = obj._listenId || (obj._listenId = _.uniqueId('l'));
-            listeningTo[id] = obj;
-            if (!callback && typeof name === 'object') callback = this;
-            obj[implementation](name, callback, this);
-            return this;
-        };
-    });
-
-    // Aliases for backwards compatibility.
-    Events.bind = Events.on;
-    Events.unbind = Events.off;
-    pEvents = _.extend(pEvents,Events);
-    if(typeof module !== 'undefined' && module.exports){
-        module.exports = pEvents;
-        root.Hook = pEvents;
-    }else{
-        root.Hook = pEvents;
-    }
-}());
-},{"underscore":9}],25:[function(require,module,exports){
-(function(){
-    var root = this;
-    var ex = {};
-    var _ = require('underscore');
-    var utils = require('tneb/utils.js');
-    var events = {};
-    events.registeredEvents = {};
-    events._oldEvents = {};
-    events.registerEvent = function(name,cb,override){
-        var ret;
-        if(this.registeredEvents[name] && !override){
-            return "Event already registred!";
-        }
-        if(override && this.registeredEvents[name]){
-            events._oldEvents[name] = events._oldEvents[name] || [];
-            events._oldEvents[name].push(this.registeredEvents[name]);
-        }
-        ret = this.registeredEvents[name] = {
-            name : name,
-            callback : cb
-        };
-        return ret;
-    };
-    
-    function SpawnEvent(Game,enemy){
-        var m = Game.create.Enemy("Dickhead");
-        if(Game.systems.battle.active) return false;
-        Game.systems.battle.start(Game.activePlayer,m);
-        Game.global.events.trigger("system:event:"+this.toString());
-        return m;
-    }
-    SpawnEvent.prototype.toString = function(){return "SpawnEvent";};
-    ex = {
-        Events : events,
-        SpawnEvent : SpawnEvent
-    };
-    if(typeof module !== 'undefined' && module.exports){
-        module.exports = ex;
-        root.GameEvents = ex;
-    }else{
-        root.GameEvents = ex;
-    }
-}());
-},{"tneb/utils.js":29,"underscore":9}],26:[function(require,module,exports){
-(function(){
-    var root = this;
-    var utils = require('tneb/utils.js');
-    
-    /*
-    * All events for locaction come in the array format of : [Event,TimesCanHappen,Weight]
-    * Search : A 2darray of all possible events.
-    * Event : {
-    *   name : SpawnEvent
-    *   noticeText : You have encountered a {{char.name}}! Prepare for battle!!,
-    *   data : [] For system/predefined events. Will be supplied to as the arguments
-    *   }
-    */
-    function Location(data){
-        this.searchEvents = [[{
-            name : "SpawnEvent",
-            data : ["Derpy"]
-        }, 0, 1]];
-        this.searchWeights = this.getSearchWeights();
-    }
-    
-    Location.prototype.search = function(events){
-        var i = utils.weightedRandom(this.searchWeights);
-        var e = this.searchEvents[i];
-        var theEvent = events.registeredEvents[e.name];
-        if(theEvent){
-            theEvent.callback.apply(theEvent,e.data);
-        }
-    };
-    
-    Location.prototype.getSearchWeights = function(){
-        return this.searchEvents.map(function(e){
-            return e[2];
-        });
-    };
-    
-    if(typeof module !== 'undefined' && module.exports){
-        module.exports = Location;
-        root.GameLocation = Location;
-    }else{
-        root.GameLocation = Location;
-    }
-}());
-},{"tneb/utils.js":29}],27:[function(require,module,exports){
-(function(){
-    var modapi = {};
-    modapi.version = "0.0.1";
-    module.exports = modapi;
-}())
-},{}],28:[function(require,module,exports){
-(function(){
-    var root = this;
-    var $ = require('jQuery');
-    var _ = require('underscore');
-    var tmpl = require('tneb-templates/character-slot.hbs');
-    function UICharacter(character,parent, wrapper){
-        this.character = character;
-        this.updateUiChar();
-        this.template = tmpl;
-        this.parent = parent || document.body;
-        this.wrapper = wrapper || document.createElement('div');
-    }
-
-    UICharacter.prototype.updateUiChar = function() {
-        if(!this.uiChar){
-            this.uiChar = {
-                stats : {}
-            };
-        }
-        // Handle stats
-        // TODO: Handle res/pen objects correctly
-        _.each(this.character.stats, function(value,key){
-            this.uiChar.stats[key] = value;
-            this.uiChar.stats[key].baseValue = value.baseValue();
-            this.uiChar.stats[key].total = value.getTotals();
-        });
-        console.log(this.uiChar.stats, "ASSPIE");
-        this.uiChar.healthPercent = (this.uiChar.stats.health.baseValue() / this.uiChar.stats.health.max()) * 100;
-        this.uiChar.manaPercent = (this.uiChar.stats.mana.baseValue() / this.uiChar.stats.mana.max()) * 100;
-        this.uiChar.speedPercent = (this.uiChar.stats.speed.baseValue() / this.uiChar.stats.speed.max()) * 100;
-        this.uiChar.name = this.character.name;
-        this.uiChar.title = "Some title";
-    };
-
-    UICharacter.prototype.update = function(){
-        this.updateUiChar();
-        this.wrapper.innerHTML = this.template(this.uiChar);
-    };
-
-    if(typeof module !== 'undefined' && module.exports){
-        module.exports = UICharacter;
-    }
-    root.UICharacter = UICharacter;
-}());
-},{"jQuery":8,"tneb-templates/character-slot.hbs":30,"underscore":9}],29:[function(require,module,exports){
-(function(){
-    var _ = require('underscore');
-    var utils = {};
-    var root = this;
-    utils.objOverride = function(to,from,check){
-        _.each(from,function(v,k){
-            if(check && from[k]){
-                if(_.isObject(from[k]) || _.isArray(from[k]) ){
-                    utils.objOverride(to[k],from[k],check);
-                }else{
-                    to[k] = v;
-                }
-            }else{
-                if(_.isObject(from[k]) || _.isArray(from[k])){
-                    utils.objOverride(to[k],from[k],check);
-                }else{
-                    to[k] = v;
-                }
-            }
-        });
-        return to;
-    };
-    //http://codetheory.in/weighted-biased-random-number-generation-with-javascript-based-on-probability/
-    utils.weightedRandom = function(weights){
-        var totalWeight = weights.reduce(function(prev,cur){
-            return prev + cur;
-        });
-        var rand = _.random(0,totalWeight);
-        var weightSum = 0;
-        for(var i = 0; i < weights.length; i++){
-            weightSum += weights[i];
-            weightSum = +weightSum;
-            if(rand <= weightSum){
-                return i;
-            }
-        }
-    };
-
-    if(typeof module !== 'undefined' && module.exports){
-        module.exports = utils;
-        root.utils = utils;
-    }else{
-        root.utils = utils;
-    }
-}());
-},{"underscore":9}],30:[function(require,module,exports){
-// hbsfy compiled Handlebars template
-var Handlebars = require('hbsfy/runtime');
-module.exports = Handlebars.template(function (Handlebars,depth0,helpers,partials,data) {
-  this.compilerInfo = [4,'>= 1.0.0'];
-helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
-  var buffer = "", stack1, helper, functionType="function", escapeExpression=this.escapeExpression;
-
-
-  buffer += "<div class=\"party-slot row\">\r\n    <div class=\"col-lg-12 name-display\">\r\n        <span class=\"name\">";
-  if (helper = helpers.name) { stack1 = helper.call(depth0, {hash:{},data:data}); }
-  else { helper = (depth0 && depth0.name); stack1 = typeof helper === functionType ? helper.call(depth0, {hash:{},data:data}) : helper; }
-  buffer += escapeExpression(stack1)
-    + "</span><input class=\"form-control\" style=\"display:none;\" type=\"text\">\r\n        <span class=\"text-muted title\"></span>\r\n    </div>\r\n    <div class=\"health-display col-lg-6\">\r\n        <span class=\"name\">"
-    + escapeExpression(((stack1 = ((stack1 = ((stack1 = (depth0 && depth0.stats)),stack1 == null || stack1 === false ? stack1 : stack1.health)),stack1 == null || stack1 === false ? stack1 : stack1.name)),typeof stack1 === functionType ? stack1.apply(depth0) : stack1))
-    + "</span>\r\n        <span class=\"bar red\" style=\"width=";
-  if (helper = helpers.healthPercent) { stack1 = helper.call(depth0, {hash:{},data:data}); }
-  else { helper = (depth0 && depth0.healthPercent); stack1 = typeof helper === functionType ? helper.call(depth0, {hash:{},data:data}) : helper; }
-  buffer += escapeExpression(stack1)
-    + "%\"></span>\r\n    </div>\r\n    <div class=\"mana-display col-lg-6\">\r\n        <span class=\"stat-abbv\">"
-    + escapeExpression(((stack1 = ((stack1 = ((stack1 = (depth0 && depth0.stats)),stack1 == null || stack1 === false ? stack1 : stack1.mana)),stack1 == null || stack1 === false ? stack1 : stack1.name)),typeof stack1 === functionType ? stack1.apply(depth0) : stack1))
-    + "</span>\r\n        <span class=\"bar blue\" style=\"width=";
-  if (helper = helpers.manaPercent) { stack1 = helper.call(depth0, {hash:{},data:data}); }
-  else { helper = (depth0 && depth0.manaPercent); stack1 = typeof helper === functionType ? helper.call(depth0, {hash:{},data:data}) : helper; }
-  buffer += escapeExpression(stack1)
-    + "%\"></span>\r\n    </div>\r\n    <div class=\"exp-display col-lg-12\">\r\n        <span class=\"stat-abbv\">Exp</span>\r\n        <span class=\"bar orange\"></span>\r\n    </div>\r\n    <div class=\"speed-display col-lg-12\">\r\n        <span class=\"stat-abbv\">"
-    + escapeExpression(((stack1 = ((stack1 = ((stack1 = (depth0 && depth0.stats)),stack1 == null || stack1 === false ? stack1 : stack1.speed)),stack1 == null || stack1 === false ? stack1 : stack1.name)),typeof stack1 === functionType ? stack1.apply(depth0) : stack1))
-    + "</span>\r\n        <span class=\"bar blue\" style=\"width=";
-  if (helper = helpers.speedPercent) { stack1 = helper.call(depth0, {hash:{},data:data}); }
-  else { helper = (depth0 && depth0.speedPercent); stack1 = typeof helper === functionType ? helper.call(depth0, {hash:{},data:data}) : helper; }
-  buffer += escapeExpression(stack1)
-    + "%\"></span>\r\n    </div>\r\n    <button class=\"btn btn-block btn-info attack\">Attack</button>\r\n    <ul class=\"skills\">\r\n        <li>Fireball</li>\r\n    </ul>\r\n</div>";
-  return buffer;
-  });
-
-},{"hbsfy/runtime":15}]},{},[10])
+},{}]},{},[17])

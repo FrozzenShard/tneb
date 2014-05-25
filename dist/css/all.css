@@ -694,6 +694,19 @@ body {
 .battle-stats p {
   margin: 5px 0; }
 
+.bar {
+  width: 100%;
+  height: 8px;
+  margin-bottom: 5px;
+  display: block;
+  border-radius: 4px; }
+  .bar.red {
+    background: red; }
+  .bar.blue {
+    background: blue; }
+  .bar.orange {
+    background: orange; }
+
 #skills li {
   float: left; }
 
