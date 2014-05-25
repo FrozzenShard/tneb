@@ -23,10 +23,17 @@ Next using the commandline install Gulp.js
     npm install -g gulp
 
 Install the project dependencies
+
     npm install
+    
 Now build the project with gulp then simply open index.html in the dist/ directory.
+
     gulp
+    
 Default is to minify the files, if you want to run the files unminified run the gulp dev task. Open index.html in dev/
+
     gulp dev
+    
 To test simple run mocha
+
     mocha
