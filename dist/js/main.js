@@ -1608,7 +1608,477 @@
 
 }));
 
-},{"underscore":3}],2:[function(require,module,exports){
+},{"underscore":9}],2:[function(require,module,exports){
+"use strict";
+/*globals Handlebars: true */
+var base = require("./handlebars/base");
+
+// Each of these augment the Handlebars object. No need to setup here.
+// (This is done to easily share code between commonjs and browse envs)
+var SafeString = require("./handlebars/safe-string")["default"];
+var Exception = require("./handlebars/exception")["default"];
+var Utils = require("./handlebars/utils");
+var runtime = require("./handlebars/runtime");
+
+// For compatibility and usage outside of module systems, make the Handlebars object a namespace
+var create = function() {
+  var hb = new base.HandlebarsEnvironment();
+
+  Utils.extend(hb, base);
+  hb.SafeString = SafeString;
+  hb.Exception = Exception;
+  hb.Utils = Utils;
+
+  hb.VM = runtime;
+  hb.template = function(spec) {
+    return runtime.template(spec, hb);
+  };
+
+  return hb;
+};
+
+var Handlebars = create();
+Handlebars.create = create;
+
+exports["default"] = Handlebars;
+},{"./handlebars/base":3,"./handlebars/exception":4,"./handlebars/runtime":5,"./handlebars/safe-string":6,"./handlebars/utils":7}],3:[function(require,module,exports){
+"use strict";
+var Utils = require("./utils");
+var Exception = require("./exception")["default"];
+
+var VERSION = "1.3.0";
+exports.VERSION = VERSION;var COMPILER_REVISION = 4;
+exports.COMPILER_REVISION = COMPILER_REVISION;
+var REVISION_CHANGES = {
+  1: '<= 1.0.rc.2', // 1.0.rc.2 is actually rev2 but doesn't report it
+  2: '== 1.0.0-rc.3',
+  3: '== 1.0.0-rc.4',
+  4: '>= 1.0.0'
+};
+exports.REVISION_CHANGES = REVISION_CHANGES;
+var isArray = Utils.isArray,
+    isFunction = Utils.isFunction,
+    toString = Utils.toString,
+    objectType = '[object Object]';
+
+function HandlebarsEnvironment(helpers, partials) {
+  this.helpers = helpers || {};
+  this.partials = partials || {};
+
+  registerDefaultHelpers(this);
+}
+
+exports.HandlebarsEnvironment = HandlebarsEnvironment;HandlebarsEnvironment.prototype = {
+  constructor: HandlebarsEnvironment,
+
+  logger: logger,
+  log: log,
+
+  registerHelper: function(name, fn, inverse) {
+    if (toString.call(name) === objectType) {
+      if (inverse || fn) { throw new Exception('Arg not supported with multiple helpers'); }
+      Utils.extend(this.helpers, name);
+    } else {
+      if (inverse) { fn.not = inverse; }
+      this.helpers[name] = fn;
+    }
+  },
+
+  registerPartial: function(name, str) {
+    if (toString.call(name) === objectType) {
+      Utils.extend(this.partials,  name);
+    } else {
+      this.partials[name] = str;
+    }
+  }
+};
+
+function registerDefaultHelpers(instance) {
+  instance.registerHelper('helperMissing', function(arg) {
+    if(arguments.length === 2) {
+      return undefined;
+    } else {
+      throw new Exception("Missing helper: '" + arg + "'");
+    }
+  });
+
+  instance.registerHelper('blockHelperMissing', function(context, options) {
+    var inverse = options.inverse || function() {}, fn = options.fn;
+
+    if (isFunction(context)) { context = context.call(this); }
+
+    if(context === true) {
+      return fn(this);
+    } else if(context === false || context == null) {
+      return inverse(this);
+    } else if (isArray(context)) {
+      if(context.length > 0) {
+        return instance.helpers.each(context, options);
+      } else {
+        return inverse(this);
+      }
+    } else {
+      return fn(context);
+    }
+  });
+
+  instance.registerHelper('each', function(context, options) {
+    var fn = options.fn, inverse = options.inverse;
+    var i = 0, ret = "", data;
+
+    if (isFunction(context)) { context = context.call(this); }
+
+    if (options.data) {
+      data = createFrame(options.data);
+    }
+
+    if(context && typeof context === 'object') {
+      if (isArray(context)) {
+        for(var j = context.length; i<j; i++) {
+          if (data) {
+            data.index = i;
+            data.first = (i === 0);
+            data.last  = (i === (context.length-1));
+          }
+          ret = ret + fn(context[i], { data: data });
+        }
+      } else {
+        for(var key in context) {
+          if(context.hasOwnProperty(key)) {
+            if(data) { 
+              data.key = key; 
+              data.index = i;
+              data.first = (i === 0);
+            }
+            ret = ret + fn(context[key], {data: data});
+            i++;
+          }
+        }
+      }
+    }
+
+    if(i === 0){
+      ret = inverse(this);
+    }
+
+    return ret;
+  });
+
+  instance.registerHelper('if', function(conditional, options) {
+    if (isFunction(conditional)) { conditional = conditional.call(this); }
+
+    // Default behavior is to render the positive path if the value is truthy and not empty.
+    // The `includeZero` option may be set to treat the condtional as purely not empty based on the
+    // behavior of isEmpty. Effectively this determines if 0 is handled by the positive path or negative.
+    if ((!options.hash.includeZero && !conditional) || Utils.isEmpty(conditional)) {
+      return options.inverse(this);
+    } else {
+      return options.fn(this);
+    }
+  });
+
+  instance.registerHelper('unless', function(conditional, options) {
+    return instance.helpers['if'].call(this, conditional, {fn: options.inverse, inverse: options.fn, hash: options.hash});
+  });
+
+  instance.registerHelper('with', function(context, options) {
+    if (isFunction(context)) { context = context.call(this); }
+
+    if (!Utils.isEmpty(context)) return options.fn(context);
+  });
+
+  instance.registerHelper('log', function(context, options) {
+    var level = options.data && options.data.level != null ? parseInt(options.data.level, 10) : 1;
+    instance.log(level, context);
+  });
+}
+
+var logger = {
+  methodMap: { 0: 'debug', 1: 'info', 2: 'warn', 3: 'error' },
+
+  // State enum
+  DEBUG: 0,
+  INFO: 1,
+  WARN: 2,
+  ERROR: 3,
+  level: 3,
+
+  // can be overridden in the host environment
+  log: function(level, obj) {
+    if (logger.level <= level) {
+      var method = logger.methodMap[level];
+      if (typeof console !== 'undefined' && console[method]) {
+        console[method].call(console, obj);
+      }
+    }
+  }
+};
+exports.logger = logger;
+function log(level, obj) { logger.log(level, obj); }
+
+exports.log = log;var createFrame = function(object) {
+  var obj = {};
+  Utils.extend(obj, object);
+  return obj;
+};
+exports.createFrame = createFrame;
+},{"./exception":4,"./utils":7}],4:[function(require,module,exports){
+"use strict";
+
+var errorProps = ['description', 'fileName', 'lineNumber', 'message', 'name', 'number', 'stack'];
+
+function Exception(message, node) {
+  var line;
+  if (node && node.firstLine) {
+    line = node.firstLine;
+
+    message += ' - ' + line + ':' + node.firstColumn;
+  }
+
+  var tmp = Error.prototype.constructor.call(this, message);
+
+  // Unfortunately errors are not enumerable in Chrome (at least), so `for prop in tmp` doesn't work.
+  for (var idx = 0; idx < errorProps.length; idx++) {
+    this[errorProps[idx]] = tmp[errorProps[idx]];
+  }
+
+  if (line) {
+    this.lineNumber = line;
+    this.column = node.firstColumn;
+  }
+}
+
+Exception.prototype = new Error();
+
+exports["default"] = Exception;
+},{}],5:[function(require,module,exports){
+"use strict";
+var Utils = require("./utils");
+var Exception = require("./exception")["default"];
+var COMPILER_REVISION = require("./base").COMPILER_REVISION;
+var REVISION_CHANGES = require("./base").REVISION_CHANGES;
+
+function checkRevision(compilerInfo) {
+  var compilerRevision = compilerInfo && compilerInfo[0] || 1,
+      currentRevision = COMPILER_REVISION;
+
+  if (compilerRevision !== currentRevision) {
+    if (compilerRevision < currentRevision) {
+      var runtimeVersions = REVISION_CHANGES[currentRevision],
+          compilerVersions = REVISION_CHANGES[compilerRevision];
+      throw new Exception("Template was precompiled with an older version of Handlebars than the current runtime. "+
+            "Please update your precompiler to a newer version ("+runtimeVersions+") or downgrade your runtime to an older version ("+compilerVersions+").");
+    } else {
+      // Use the embedded version info since the runtime doesn't know about this revision yet
+      throw new Exception("Template was precompiled with a newer version of Handlebars than the current runtime. "+
+            "Please update your runtime to a newer version ("+compilerInfo[1]+").");
+    }
+  }
+}
+
+exports.checkRevision = checkRevision;// TODO: Remove this line and break up compilePartial
+
+function template(templateSpec, env) {
+  if (!env) {
+    throw new Exception("No environment passed to template");
+  }
+
+  // Note: Using env.VM references rather than local var references throughout this section to allow
+  // for external users to override these as psuedo-supported APIs.
+  var invokePartialWrapper = function(partial, name, context, helpers, partials, data) {
+    var result = env.VM.invokePartial.apply(this, arguments);
+    if (result != null) { return result; }
+
+    if (env.compile) {
+      var options = { helpers: helpers, partials: partials, data: data };
+      partials[name] = env.compile(partial, { data: data !== undefined }, env);
+      return partials[name](context, options);
+    } else {
+      throw new Exception("The partial " + name + " could not be compiled when running in runtime-only mode");
+    }
+  };
+
+  // Just add water
+  var container = {
+    escapeExpression: Utils.escapeExpression,
+    invokePartial: invokePartialWrapper,
+    programs: [],
+    program: function(i, fn, data) {
+      var programWrapper = this.programs[i];
+      if(data) {
+        programWrapper = program(i, fn, data);
+      } else if (!programWrapper) {
+        programWrapper = this.programs[i] = program(i, fn);
+      }
+      return programWrapper;
+    },
+    merge: function(param, common) {
+      var ret = param || common;
+
+      if (param && common && (param !== common)) {
+        ret = {};
+        Utils.extend(ret, common);
+        Utils.extend(ret, param);
+      }
+      return ret;
+    },
+    programWithDepth: env.VM.programWithDepth,
+    noop: env.VM.noop,
+    compilerInfo: null
+  };
+
+  return function(context, options) {
+    options = options || {};
+    var namespace = options.partial ? options : env,
+        helpers,
+        partials;
+
+    if (!options.partial) {
+      helpers = options.helpers;
+      partials = options.partials;
+    }
+    var result = templateSpec.call(
+          container,
+          namespace, context,
+          helpers,
+          partials,
+          options.data);
+
+    if (!options.partial) {
+      env.VM.checkRevision(container.compilerInfo);
+    }
+
+    return result;
+  };
+}
+
+exports.template = template;function programWithDepth(i, fn, data /*, $depth */) {
+  var args = Array.prototype.slice.call(arguments, 3);
+
+  var prog = function(context, options) {
+    options = options || {};
+
+    return fn.apply(this, [context, options.data || data].concat(args));
+  };
+  prog.program = i;
+  prog.depth = args.length;
+  return prog;
+}
+
+exports.programWithDepth = programWithDepth;function program(i, fn, data) {
+  var prog = function(context, options) {
+    options = options || {};
+
+    return fn(context, options.data || data);
+  };
+  prog.program = i;
+  prog.depth = 0;
+  return prog;
+}
+
+exports.program = program;function invokePartial(partial, name, context, helpers, partials, data) {
+  var options = { partial: true, helpers: helpers, partials: partials, data: data };
+
+  if(partial === undefined) {
+    throw new Exception("The partial " + name + " could not be found");
+  } else if(partial instanceof Function) {
+    return partial(context, options);
+  }
+}
+
+exports.invokePartial = invokePartial;function noop() { return ""; }
+
+exports.noop = noop;
+},{"./base":3,"./exception":4,"./utils":7}],6:[function(require,module,exports){
+"use strict";
+// Build out our basic SafeString type
+function SafeString(string) {
+  this.string = string;
+}
+
+SafeString.prototype.toString = function() {
+  return "" + this.string;
+};
+
+exports["default"] = SafeString;
+},{}],7:[function(require,module,exports){
+"use strict";
+/*jshint -W004 */
+var SafeString = require("./safe-string")["default"];
+
+var escape = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#x27;",
+  "`": "&#x60;"
+};
+
+var badChars = /[&<>"'`]/g;
+var possible = /[&<>"'`]/;
+
+function escapeChar(chr) {
+  return escape[chr] || "&amp;";
+}
+
+function extend(obj, value) {
+  for(var key in value) {
+    if(Object.prototype.hasOwnProperty.call(value, key)) {
+      obj[key] = value[key];
+    }
+  }
+}
+
+exports.extend = extend;var toString = Object.prototype.toString;
+exports.toString = toString;
+// Sourced from lodash
+// https://github.com/bestiejs/lodash/blob/master/LICENSE.txt
+var isFunction = function(value) {
+  return typeof value === 'function';
+};
+// fallback for older versions of Chrome and Safari
+if (isFunction(/x/)) {
+  isFunction = function(value) {
+    return typeof value === 'function' && toString.call(value) === '[object Function]';
+  };
+}
+var isFunction;
+exports.isFunction = isFunction;
+var isArray = Array.isArray || function(value) {
+  return (value && typeof value === 'object') ? toString.call(value) === '[object Array]' : false;
+};
+exports.isArray = isArray;
+
+function escapeExpression(string) {
+  // don't escape SafeStrings, since they're already safe
+  if (string instanceof SafeString) {
+    return string.toString();
+  } else if (!string && string !== 0) {
+    return "";
+  }
+
+  // Force a string conversion as this will be done by the append regardless and
+  // the regex test will do this transparently behind the scenes, causing issues if
+  // an object's to string has escaped characters in it.
+  string = "" + string;
+
+  if(!possible.test(string)) { return string; }
+  return string.replace(badChars, escapeChar);
+}
+
+exports.escapeExpression = escapeExpression;function isEmpty(value) {
+  if (!value && value !== 0) {
+    return true;
+  } else if (isArray(value) && value.length === 0) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+exports.isEmpty = isEmpty;
+},{"./safe-string":6}],8:[function(require,module,exports){
 /*!
  * jQuery JavaScript Library v1.11.1
  * http://jquery.com/
@@ -11918,7 +12388,7 @@ return jQuery;
 
 }));
 
-},{}],3:[function(require,module,exports){
+},{}],9:[function(require,module,exports){
 //     Underscore.js 1.6.0
 //     http://underscorejs.org
 //     (c) 2009-2014 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
@@ -13263,140 +13733,22 @@ return jQuery;
   }
 }).call(this);
 
-},{}],4:[function(require,module,exports){
-(function(){
-    var root = this;
-    var create;
-    var Character = require('./systems/battle/character.js');
-    var Monster = require('./systems/battle/monster.js');
-    function Create(){
-        if(create) return create;
-        create = {};
-        create.Monster = function(name){
-            var ret = new Monster({name : name});
-            return ret;
-        };
-        return create;
-    }
-    if(typeof module !== 'undefined' && module.exports){
-        module.exports = Create;
-        root.Create = Create;
-    }else{
-        root.Create = Create;
-    }
-}());
-},{"./systems/battle/character.js":10,"./systems/battle/monster.js":12}],5:[function(require,module,exports){
-(function(){
-    var root = this;
-    var config = {};
-    config.battle = {
-        armorMultiplier : 0.04,
-        magicResMultiplier : 0.06,
-        elementalResMultiplier : 0.015,
-        maxSpeed : 100
-    };
-    
-    if(typeof module !== 'undefined' && module.exports){
-        module.exports = config;
-        root.config = config;
-    }else{
-        root.config = config;
-    }
-}());
-},{}],6:[function(require,module,exports){
-(function () {
-    var root = this;
-    var constants = {};
-    constants.damageTypes = {
-        physical: 'physical',
-        magical: 'magical',
-        pure: 'pure',
-        hpRemoval: 'hpRemoval',
-        manaRemoval: 'manaRemoval'
-    };
-    constants.elements = {
-        neutral: 'neutral',
-        fire: 'fire',
-        ice: 'ice',
-        water: 'water',
-        elec: 'electric',
-        light: 'light',
-        dark: 'dark',
-        earth: 'earth',
-        wind: 'wind'
-    };
-
-    constants.stats = {
-        fireRes: "Fire Res",
-        iceRes: "Ice Res",
-        elecRes: "Elec Res",
-        waterRes: "Water Res",
-        earthRes: "Earth Res",
-        windRes: "Wind Res",
-        lightRes: "Light Res",
-        darkRes: "Dark Res",
-        str: "Str",
-        dex: "Dex",
-        int: "Int",
-        luk: "Luk",
-        magicalPower : "Magical Power",
-        physicalPower : "Physical Power",
-        health: "Health",
-        mana: "Mana",
-        healthRegen: "Health Regen",
-        manaRegen: "Mana Regen",
-        speed: "Speed",
-        speedGain: "Speed Gain",
-        penetration: {
-            percent: {
-                armor: "Percent Armor Penetration",
-                magic: "Percent Magic Penetration",
-                fire: "Percent Fire Penetration",
-                ice: "Percent Ice Penetration",
-                water:"Percent Water Penetration",
-                elec: "Percent Electrical Penetration",
-                earth: "Percent Earth Penetration",
-                wind: "Percent Wind Penetration",
-                light: "Percent Light Penetration",
-                dark: "Percent Dark Penetration"
-            },
-            flat: {
-                armor: "Flat Armor Penetration",
-                magic: "Flat Magic Penetration",
-                fire: "Flat Fire Penetration",
-                ice: "Flat Ice Penetration",
-                water:"Flat Water Penetration",
-                elec: "Flat Electrical Penetration",
-                earth: "Flat Earth Penetration",
-                wind: "Flat Wind Penetration",
-                light: "Flat Light Penetration",
-                dark: "Flat Dark Penetration"
-            }
-        }
-    };
-
-    if(typeof module !== 'undefined' && module.exports){
-        module.exports = constants;
-        root.constants = constants;
-    }else{
-        root.constants = constants;
-    }
-}());
-},{}],7:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
 (function(){
     var root = this;
     var $ = require('jQuery');
     var backbone = require('backbone');
     var _ = require('underscore');
-    var config = require('./etc/config.js');
-    var Character = require('./systems/battle/character.js');
-    var Battle = require('./systems/battle/battle.js');
-    var modApi = require('./systems/mod/modapi.js');
-    var hook = require('./systems/battle/hook.js');
-    var Create = require('./create.js');
-    var Location = require('./systems/map/location.js');
-    var events = require('./systems/map/events.js');
-    //var User = require('./user.js);
+    var config = require('tneb/etc/config.js');
+    var Character = require('tneb/systems/battle/character.js');
+    var Battle = require('tneb/systems/battle/battle.js');
+    var modApi = require('tneb/systems/mod/modapi.js');
+    var hook = require('tneb/systems/battle/hook.js');
+    var Create = require('tneb/create.js');
+    var Location = require('tneb/systems/map/location.js');
+    var events = require('tneb/systems/map/events.js');
+    var Player = require('tneb/player.js');
+    var logger = require('tneb/logger');
     
     var Game = {};
     Game.systems = {};
@@ -13404,30 +13756,29 @@ return jQuery;
         elapsed : 1,
         lastTime : 1
     };
-    Game.global = {
-        _ : _,
-        backbone : backbone,
-        modApi : modApi
-    };
+    Game.global = {};
     Game.global.events = {};
     _.extend(Game.global.events,hook);
     Game.init = function(){
-        Game.activePlayer = new Character({},this);
+        Game.activePlayer = new Player(this);
         Game.timer.lastTime = Date.now();
         Game.loop();
-        Game.systems.battle = Battle(this);
+        Game.systems.battle = new Battle(this);
         Game.create = Create(this);
+        alert("FATG");
     };
     
     Game.update = function(){
         _.each(Game.systems,function(v,k){
             v.update();
         });
+        this.activePlayer.update();
     };
     Game.render = function(){
         _.each(Game.systems,function(v,k){
             v.render(Game.activePlayer);
         });
+        this.activePlayer.render();
     };
     Game.loop = function(){
         Game.timer.elapsed = (Date.now() - Game.timer.lastTime) / 1000;
@@ -13437,7 +13788,8 @@ return jQuery;
         Game.timeout = setTimeout(Game.loop,1000/config.fps);
         Game.timer.lastTime = Date.now();
     };
-    Game.global.version = "0.0.2";
+    Game.init();
+    Game.version = "0.0.2";
     if(typeof module !== 'undefined' && module.exports){
         module.exports = Game;
         root.Game = Game;
@@ -13445,242 +13797,12 @@ return jQuery;
         root.Game = Game;
     }
 }());
-},{"./create.js":4,"./etc/config.js":5,"./systems/battle/battle.js":8,"./systems/battle/character.js":10,"./systems/battle/hook.js":11,"./systems/map/events.js":14,"./systems/map/location.js":15,"./systems/mod/modapi.js":16,"backbone":1,"jQuery":2,"underscore":3}],8:[function(require,module,exports){
-(function () {
-    var _ = require('underscore');
-    var $ = require('jQuery');
-    var root = this;
-
-    function Battle(Game) {
-        this.log = [];
-        this.fighterA;
-        this.fighterB;
-        this.Game = Game;
-        this.active = false;
-        this.ui = {};
-        this.init();
-    }
-    Battle.version = "0.0.1";
-    Battle.prototype.init = function () {
-        this.Game.global.events.trigger('battle:systemInit');
-        //this.initUi();
-    };
-    Battle.prototype.initUi = function () {
-        this.ui.player = {};
-        var base = this.ui.player.playerBase = $("#player-battle-stats");
-        this.ui.player.stats = {
-            health: {
-                $name: base.find(".health .name"),
-                $value: base.find(".health .value")
-            },
-            mana: {
-                $name: base.find(".mana .name"),
-                $value: base.find(".mana .value")
-            },
-            str: {
-                $name: base.find(".str .name"),
-                $value: base.find(".str .value")
-            },
-            dex: {
-                $name: base.find(".dex .name"),
-                $value: base.find(".dex .value")
-            },
-            int: {
-                $name: base.find(".int .name"),
-                $value: base.find(".int .value")
-            },
-            speed: {
-                $name: base.find(".speed .name"),
-                $value: base.find(".speed .value")
-            },
-            armor: {
-                $name: base.find(".armor .name"),
-                $value: base.find(".armor .value")
-            },
-            magicRes: {
-                $name: base.find(".magic-res .name"),
-                $value: base.find(".magic-res .value")
-            },
-            fireRes: {
-                $name: base.find(".fire-res .name"),
-                $value: base.find(".fire-res .value")
-            },
-            iceRes: {
-                $name: base.find(".ice-res .name"),
-                $value: base.find(".ice-res .value")
-            },
-            waterRes: {
-                $name: base.find(".water-res .name"),
-                $value: base.find(".water-res .value")
-            },
-            elecRes: {
-                $name: base.find(".elec-res .name"),
-                $value: base.find(".elec-res .value")
-            },
-            earthRes: {
-                $name: base.find(".earth-res .name"),
-                $value: base.find(".earth-res .value")
-            },
-            windRes: {
-                $name: base.find(".wind-res .name"),
-                $value: base.find(".wind-res .value")
-            },
-            lightRes: {
-                $name: base.find(".light-res .name"),
-                $value: base.find(".light-res .value")
-            },
-            darkRes: {
-                $name: base.find(".dark-res .name"),
-                $value: base.find(".dark-res .value")
-            }
-        };
-        this.ui.enemy = {};
-        base = this.ui.enemy.base = $("#enemy-battle-stats");
-        this.ui.enemy.stats = {
-            health: {
-                $name: base.find(".health .name"),
-                $value: base.find(".health .value")
-            },
-            mana: {
-                $name: base.find(".mana .name"),
-                $value: base.find(".mana .value")
-            },
-            str: {
-                $name: base.find(".str .name"),
-                $value: base.find(".str .value")
-            },
-            dex: {
-                $name: base.find(".dex .name"),
-                $value: base.find(".dex .value")
-            },
-            int: {
-                $name: base.find(".int .name"),
-                $value: base.find(".int .value")
-            },
-            speed: {
-                $name: base.find(".speed .name"),
-                $value: base.find(".speed .value")
-            },
-            armor: {
-                $name: base.find(".armor .name"),
-                $value: base.find(".armor .value")
-            },
-            magicRes: {
-                $name: base.find(".magic-res .name"),
-                $value: base.find(".magic-res .value")
-            },
-            fireRes: {
-                $name: base.find(".fire-res .name"),
-                $value: base.find(".fire-res .value")
-            },
-            iceRes: {
-                $name: base.find(".ice-res .name"),
-                $value: base.find(".ice-res .value")
-            },
-            waterRes: {
-                $name: base.find(".water-res .name"),
-                $value: base.find(".water-res .value")
-            },
-            elecRes: {
-                $name: base.find(".elec-res .name"),
-                $value: base.find(".elec-res .value")
-            },
-            earthRes: {
-                $name: base.find(".earth-res .name"),
-                $value: base.find(".earth-res .value")
-            },
-            windRes: {
-                $name: base.find(".wind-res .name"),
-                $value: base.find(".wind-res .value")
-            },
-            lightRes: {
-                $name: base.find(".light-res .name"),
-                $value: base.find(".light-res .value")
-            },
-            darkRes: {
-                $name: base.find(".dark-res .name"),
-                $value: base.find(".dark-res .value")
-            }
-        };
-        base = null;
-    };
-
-    Battle.prototype.update = function () {
-        if (!this.active) return;
-        var fasg = this.fighterA.stats.speedGain.getTotal() * this.Game.timer.elapsed;
-        // I originally was going to abbrivate as FighterAspeedGain but that seemed like a bad idea.
-        var fbsg = this.fighterA.stats.speedGain.getTotal() * this.Game.timer.elapsed;
-        this.fighterA.stats.speed.increase(fasg);
-        this.fighterB.stats.speed.increase(fbsg);
-
-        if (this.fighterA.stats.speed.isMax()) {
-            this.actionQueue.push([this.fighterA, this.fighterB]);
-        }
-
-        if (this.fighterB.stats.speed.isMax()) {
-            if (this.actionQueue.length > 0 && (this.fighterA.stats.speed.max() - fasg) < (this.fighterB.stats.speed.max() - fbsg)) {
-                this.actionQueue.push([this.fighterB, this.fighterA]);
-            } else {
-                this.actionQueue.unshift([this.fighterB, this.fighterA]);
-            }
-        }
-
-        if (this.actionQueue.length) {
-            var len = this.actionQueue.length;
-            while (len-- && this.active) {
-                this.actionQueue[len][0].doAction(this.actionQueue[len][1]);
-                this.actionQueue[len][0].stats.speed.baseValue(0);
-                this.actionQueue.pop();
-            }
-        }
-    };
-
-    Battle.prototype.end = function () {
-        this.active = false;
-        return true;
-    };
-
-
-    Battle.prototype.render = function (player, enemy) {
-        player = player || this.fighterA;
-        enemy = enemy || this.fighterB;
-        console.log(player);
-        if (player) {
-            this.ui.player.stats.health.$value.text(player.getStat('health', 'current'));
-        }
-    };
-
-    Battle.prototype.start = function (fighterA, fighterB, conditions) {
-        this.clear();
-        if (!fighterA || !fighterB) return false;
-        this.fighterA = fighterA;
-        this.fighterB = fighterB;
-        this.Game.global.events.trigger('system:battle:start', this);
-        this.active = true;
-        fighterA.stats.speed.baseValue(0);
-        fighterB.stats.speed.baseValue(0);
-        this.update();
-        this.Game.global.events.once("system:character:death", this.end,this);
-        return this.active;
-    };
-
-    Battle.prototype.clear = function () {
-        this.actionQueue = [];
-        this.allCharacters = [];
-    };
-    if (typeof module !== 'undefined' && module.exports) {
-        module.exports = Battle;
-        root.Battle = Battle;
-    } else {
-        root.Battle = Battle;
-    }
-}());
-},{"jQuery":2,"underscore":3}],9:[function(require,module,exports){
+},{"backbone":1,"jQuery":8,"tneb/create.js":16,"tneb/etc/config.js":17,"tneb/logger":19,"tneb/player.js":20,"tneb/systems/battle/battle.js":21,"tneb/systems/battle/character.js":22,"tneb/systems/battle/hook.js":24,"tneb/systems/map/events.js":25,"tneb/systems/map/location.js":26,"tneb/systems/mod/modapi.js":27,"underscore":9}],11:[function(require,module,exports){
 (function () {
     var root = this;
     var _ = require('underscore');
-    var constants = require('../../etc/constants.js');
-    var config = require('../../etc/config.js');
+    var constants = require('tneb/etc/constants.js');
+    var config = require('tneb/etc/config.js');
     
     
     /*
@@ -13783,13 +13905,13 @@ return jQuery;
     }
 
 }());
-},{"../../etc/config.js":5,"../../etc/constants.js":6,"underscore":3}],10:[function(require,module,exports){
+},{"tneb/etc/config.js":17,"tneb/etc/constants.js":18,"underscore":9}],12:[function(require,module,exports){
 (function () {
     var root = this;
     var _ = require('underscore');
-    var utils = require('../../utils.js');
-    var constants = require('../../etc/constants.js');
-    var config = require('../../etc/config.js');
+    var utils = require('tneb/utils.js');
+    var constants = require('tneb/etc/constants.js');
+    var config = require('tneb/etc/config.js');
     var Calculator = require('./calculator.js');
     var Stat = require('./stat.js');
 
@@ -14053,7 +14175,502 @@ return jQuery;
         root.Character = Character;
     }
 }());
-},{"../../etc/config.js":5,"../../etc/constants.js":6,"../../utils.js":17,"./calculator.js":9,"./stat.js":13,"underscore":3}],11:[function(require,module,exports){
+},{"./calculator.js":11,"./stat.js":13,"tneb/etc/config.js":17,"tneb/etc/constants.js":18,"tneb/utils.js":29,"underscore":9}],13:[function(require,module,exports){
+(function(){
+    var root = this;
+    var _ = require('underscore');
+    function Stat(name,val,max,min){
+        if(!(this instanceof Stat)) return new Stat(name,val,max,min); // Thanks jarofghosts
+        this.modifiers = [];
+        this.afterModifiers = [];
+        this._baseValue = val || 0;
+        if(max != null) this._max = max;
+        if(min != null) this._min = min;
+    }
+    
+    Stat.prototype.increase = function(val){
+        this._baseValue += val;
+        this.clamp();
+        return this._baseValue;
+    };
+    
+    Stat.prototype.decrease = function(val){
+        this._baseValue -= val;
+        this.clamp();
+        return this._baseValue;
+    };
+    
+    Stat.prototype.change = function(val){
+        return val > 0 ? this.increase(val) : this.decrease(-val);
+    };
+    
+    Stat.prototype.baseValue = function(val,set){
+        if(set) this._baseValue = val;
+        else if(val !== undefined) this._baseValue += val;
+        this.clamp();
+        return this._baseValue;
+    };
+    
+    Stat.prototype.max = function(val,set){
+        if(arguments.length === 0) return this._max;
+        if(set || this._max === undefined) this._max = val;
+        else if(val) this._max += val;
+        this.clamp();
+        return this._max;
+    };
+    
+    Stat.prototype.isMax = function(val){
+        return this._max != null ? (this._baseValue === this._max) : false;
+    };
+    
+    Stat.prototype.min = function(val,set){
+        if(arguments.length === 0) return this._min;
+        if(set || this._min === undefined) this._min = val;
+        else if(val) this._min += val;
+        this.clamp();
+        return this._min;
+    };
+    
+    Stat.prototype.isMin = function(val){
+        return this._min != null ? (this._baseValue === this._min) : false;
+    };
+    
+    Stat.prototype.clamp = function(){
+        if( this._max != null && this._baseValue > this._max) this._baseValue = this._max;
+        if(this._min != null && this._baseValue < this._min) this._baseValue = this._min;
+    };
+    
+    Stat.prototype.isGreaterThan = function(stat,useTotal){
+        if(useTotal){
+            return this.getTotal() > stat.getTotal();
+        }
+        return this._baseValue > stat._baseValue;
+    };
+    
+    Stat.prototype.isLessThan = function(stat,useTotal){
+        if(useTotal){
+            return this.getTotal() < stat.getTotal();
+        }
+        return this._baseValue < stat._baseValue;
+    };
+    
+    Stat.prototype.isEqualTo = function(stat,fuzzy,useTotal){
+        if(useTotal){
+            return fuzzy ? Math.floor(this.getTotal()) === Math.floor(stat.getTotal()) : this.getTotal() === stat.getTotal();
+        }
+        return fuzzy ? Math.floor(this._baseValue) ===  Math.floor(stat._baseValue) : this._baseValue === stat._baseValue;
+    };
+    
+    Stat.prototype.add = function(stat, useTotal){
+        if(useTotal) return this.getTotal() + stat.getTotal();
+        return this.baseValue() + stat.baseValue();
+    };
+    
+    Stat.prototype.subtract = function(stat, useTotal){
+        if(useTotal) return this.getTotal() - stat.getTotal();
+        return this.baseValue() - stat.baseValue();
+    };
+    
+    Stat.prototype.multiply = function(stat, useTotal){
+        if(useTotal) return this.getTotal() * stat.getTotal();
+        return this.baseValue() * stat.baseValue();
+    };
+    
+    Stat.prototype.divide = function(stat, useTotal){
+        var st;
+        if(useTotal) {
+            st = stat.getTotal();
+            return this.getTotal() / (st > 0 ? st : 1 );
+        }
+        st = stat.baseValue();
+        return this.baseValue() / (st > 0 ? st : 1 );
+    };
+    
+    /*
+    * Add a modifier with a Flat or Percent Value value
+    * @param {String} type The type of modifier, flat or percentage
+    * @param {number|function} [value] Value to add. If its a function it will passed the stat object and owner. Functions are always calculated last
+    * @param {boolean} [before] Add the value after the main calculations. Default runs with the main calculations
+    * @return {object} The modifer object. Set destroy value when want to remove
+    */
+    Stat.prototype.addModifer = function(type,value,after){
+        var m = {
+            type : type,
+            value : value,
+            after : after || false,
+            destroy : false
+        };
+        if(_.isFunction(value) || after){
+            this.modifiers.unshift(m);
+            if(after) this.afterModifiers.push(after);
+        }else{
+            this.modifiers.push(m);
+        }
+        return m;
+    };
+    
+    Stat.prototype.getTotal = function(){
+        var i,
+            after = [],
+            perValues = 0,
+            t,
+            lv = 0,
+            len,
+            totals = {
+                flatTotal : 0,
+                totalAfterFlat : 0,
+                percentTotal : 0,
+                totalAfterPercent : 0,
+                total : 0
+            };
+        len = this.modifiers.length;
+        while(len--){
+            t = this.modifiers[len];
+            if(!t.destroy){
+                if(!t.after){
+                    if(_.isFunction(t.value)){
+                        totals[t.type+"Total"] += t.value(this);
+                    }else{
+                        totals[t.type+"Total"] += t.value;
+                    }
+                }else{
+                    after.push(t);
+                }
+            }else{
+                this.modifiers.splice(len,1);
+            }
+        }
+        if(after.length > 0){
+            for(i = 0; i < after.length; i++){
+                t = after[i];
+                t.value(this,totals);
+            }
+        }
+        totals.total += this._baseValue + totals.flatTotal;
+        totals.total += totals.total * (totals.percentTotal * 0.01);
+        if(this._min && totals.total < this._min){
+            totals.total = this._min;
+        }else if(this._max && totals.total > this._max){
+            totals.total = this._max;
+        }
+        return totals.total;
+    };
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = Stat;
+        root.Stat = Stat;
+    }else{
+        root.Stat = Stat;
+    }
+    
+}());
+},{"underscore":9}],14:[function(require,module,exports){
+// Create a simple path alias to allow browserify to resolve
+// the runtime on a supported path.
+module.exports = require('./dist/cjs/handlebars.runtime');
+
+},{"./dist/cjs/handlebars.runtime":2}],15:[function(require,module,exports){
+module.exports = require("handlebars/runtime")["default"];
+
+},{"handlebars/runtime":14}],16:[function(require,module,exports){
+(function(){
+    var root = this;
+    var create;
+    var Character = require('tneb/systems/battle/character.js');
+    var Enemy = require('tneb/systems/battle/enemy.js');
+    function Create(){
+        if(create) return create;
+        create = {};
+        create.Enemy = function(name){
+            var ret = new Enemy({name : name});
+            return ret;
+        };
+        return create;
+    }
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = Create;
+        root.Create = Create;
+    }else{
+        root.Create = Create;
+    }
+}());
+},{"tneb/systems/battle/character.js":22,"tneb/systems/battle/enemy.js":23}],17:[function(require,module,exports){
+(function(){
+    // silly dance party
+    var root = this;
+    var config = {};
+    config.battle = {
+        armorMultiplier : 0.04,
+        magicResMultiplier : 0.06,
+        elementalResMultiplier : 0.015,
+        maxSpeed : 100
+    };
+    
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = config;
+        root.config = config;
+    }else{
+        root.config = config;
+    }
+}());
+},{}],18:[function(require,module,exports){
+(function () {
+    var root = this;
+    var constants = {};
+    constants.damageTypes = {
+        physical: 'physical',
+        magical: 'magical',
+        pure: 'pure',
+        hpRemoval: 'hpRemoval',
+        manaRemoval: 'manaRemoval'
+    };
+    constants.elements = {
+        neutral: 'neutral',
+        fire: 'fire',
+        ice: 'ice',
+        water: 'water',
+        elec: 'electric',
+        light: 'light',
+        dark: 'dark',
+        earth: 'earth',
+        wind: 'wind'
+    };
+
+    constants.stats = {
+        fireRes: "Fire Res",
+        iceRes: "Ice Res",
+        elecRes: "Elec Res",
+        waterRes: "Water Res",
+        earthRes: "Earth Res",
+        windRes: "Wind Res",
+        lightRes: "Light Res",
+        darkRes: "Dark Res",
+        str: "Str",
+        dex: "Dex",
+        int: "Int",
+        luk: "Luk",
+        magicalPower : "Magical Power",
+        physicalPower : "Physical Power",
+        health: "Health",
+        mana: "Mana",
+        healthRegen: "Health Regen",
+        manaRegen: "Mana Regen",
+        speed: "Speed",
+        speedGain: "Speed Gain",
+        penetration: {
+            percent: {
+                armor: "Percent Armor Penetration",
+                magic: "Percent Magic Penetration",
+                fire: "Percent Fire Penetration",
+                ice: "Percent Ice Penetration",
+                water:"Percent Water Penetration",
+                elec: "Percent Electrical Penetration",
+                earth: "Percent Earth Penetration",
+                wind: "Percent Wind Penetration",
+                light: "Percent Light Penetration",
+                dark: "Percent Dark Penetration"
+            },
+            flat: {
+                armor: "Flat Armor Penetration",
+                magic: "Flat Magic Penetration",
+                fire: "Flat Fire Penetration",
+                ice: "Flat Ice Penetration",
+                water:"Flat Water Penetration",
+                elec: "Flat Electrical Penetration",
+                earth: "Flat Earth Penetration",
+                wind: "Flat Wind Penetration",
+                light: "Flat Light Penetration",
+                dark: "Flat Dark Penetration"
+            }
+        }
+    };
+
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = constants;
+        root.constants = constants;
+    }else{
+        root.constants = constants;
+    }
+}());
+},{}],19:[function(require,module,exports){
+(function(){
+    var root = this;
+    var $ = require('jQuery');
+    var GameLogger = {};
+    var el;
+    GameLogger.displayList = [];
+    GameLogger.currentMessages = [];
+    GameLogger.fullLog = [];
+    GameLogger.el = $("#logger");
+    GameLogger.maxMessages = 8;
+    el = GameLogger.el;
+    GameLogger.log = function(type,message){
+        var curTime = Date.now(),
+            len;
+        this.fullLog.push({message : message, timestamp : curTime, type : type});
+        this.currentMessages.push({message : message, timestamp : curTime, type : type});
+        if(this.currentMessages.length > this.maxMessages){
+            this.currentMessages.splice(0,1);
+        }
+        len = this.currentMessages.length;
+        while(len--){
+            this.displayList[len].innerHTML = this.currentMessages[len].message;
+        }
+    };
+    for(var i = 0; i < GameLogger.maxMessages; i++){
+        var p = document.createElement('p');
+        GameLogger.displayList.push(p);
+        el.append(p);
+    }
+    
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = GameLogger;
+    }
+    root.GameLogger = GameLogger;
+}());
+},{"jQuery":8}],20:[function(require,module,exports){
+(function(){
+    var root = this;
+    var Character = require('tneb/systems/battle/character.js');
+    var $ = require('jQuery');
+    var randomNames = ["Sammy", "Villy", "Azarath", "Metrion", "Zinthos",
+                       "Flying Watermelon", "Blue", "Meteor", "Lion Rabbit",
+                       "Robotmayo", "SJVellenga", "Antlong", "MoragX", "tangentialThinker","waffleyone",
+                      "Muffer-Nl", "gamehelp16", "firewires"];
+    var _ = require('underscore');
+    var UICharacter = require('tneb/ui/uicharacter.js');
+    function Player(Game){
+        this.party = [new Character(null,Game)];
+        this.ui = new UICharacter(this.party[0], document.getElementById("party-battle-stats"));
+        this.Game = Game;
+        this.name = _.sample(randomNames,1);
+        this.lastFrame = {};
+        this.inBattle = false;
+        this.Game.global.events.on("battle:start", function(){
+            this.inBattle = true;
+        });
+    }
+    
+    Player.prototype.update = function(){
+        this.ui.update();
+    };
+    
+    Player.prototype.render = function(){
+
+    };
+    
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = Player;
+    }else{
+        root.Player = Player;
+    }
+
+}());
+},{"jQuery":8,"tneb/systems/battle/character.js":22,"tneb/ui/uicharacter.js":28,"underscore":9}],21:[function(require,module,exports){
+(function () {
+    var _ = require('underscore');
+    var $ = require('jQuery');
+    var root = this;
+
+    function Battle(Game) {
+        this.log = [];
+        this.fighterA;
+        this.fighterB;
+        this.Game = Game;
+        this.active = false;
+        this.init();
+    }
+    Battle.version = "0.0.1";
+    Battle.prototype.init = function () {
+        this.Game.global.events.trigger('battle:systemInit');
+        //this.initUi();
+    };
+
+    Battle.prototype.update = function () {
+        if (!this.active) return;
+        var fasg = this.fighterA.stats.speedGain.getTotal() * this.Game.timer.elapsed;
+        // I originally was going to abbrivate as FighterAspeedGain but that seemed like a bad idea.
+        var fbsg = this.fighterA.stats.speedGain.getTotal() * this.Game.timer.elapsed;
+        this.fighterA.stats.speed.increase(fasg);
+        this.fighterB.stats.speed.increase(fbsg);
+
+        if (this.fighterA.stats.speed.isMax()) {
+            this.actionQueue.push([this.fighterA, this.fighterB]);
+        }
+
+        if (this.fighterB.stats.speed.isMax()) {
+            if (this.actionQueue.length > 0 && (this.fighterA.stats.speed.max() - fasg) < (this.fighterB.stats.speed.max() - fbsg)) {
+                this.actionQueue.push([this.fighterB, this.fighterA]);
+            } else {
+                this.actionQueue.unshift([this.fighterB, this.fighterA]);
+            }
+        }
+
+        if (this.actionQueue.length) {
+            var len = this.actionQueue.length;
+            while (len-- && this.active) {
+                this.actionQueue[len][0].doAction(this.actionQueue[len][1]);
+                this.actionQueue[len][0].stats.speed.baseValue(0);
+                this.actionQueue.pop();
+            }
+        }
+    };
+
+    Battle.prototype.end = function () {
+        this.active = false;
+        return true;
+    };
+
+
+    Battle.prototype.render = function (player, enemy) {
+        
+    };
+
+    Battle.prototype.start = function (fighterA, fighterB, conditions) {
+        this.clear();
+        if (!fighterA || !fighterB) return false;
+        this.fighterA = fighterA;
+        this.fighterB = fighterB;
+        this.Game.global.events.trigger('system:battle:start', this);
+        this.active = true;
+        fighterA.stats.speed.baseValue(0);
+        fighterB.stats.speed.baseValue(0);
+        this.update();
+        this.Game.global.events.once("system:character:death", this.end,this);
+        return this.active;
+    };
+
+    Battle.prototype.clear = function () {
+        this.actionQueue = [];
+        this.allCharacters = [];
+    };
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = Battle;
+        root.Battle = Battle;
+    } else {
+        root.Battle = Battle;
+    }
+}());
+},{"jQuery":8,"underscore":9}],22:[function(require,module,exports){
+module.exports=require(12)
+},{"./calculator.js":11,"./stat.js":13,"tneb/etc/config.js":17,"tneb/etc/constants.js":18,"tneb/utils.js":29,"underscore":9}],23:[function(require,module,exports){
+(function(){
+    var root = this;
+    var Character = require('./character.js');
+    
+    function Enemy(){
+        Character.apply(this,arguments);
+    }
+    
+    Enemy.prototype = Character.prototype;
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = Enemy;
+        
+        root.Enemy = Enemy;
+    }else{
+        root.Enemy = Enemy;
+    }
+}());
+},{"./character.js":12}],24:[function(require,module,exports){
 (function () {
     var root = this;
     var _ = require('underscore');
@@ -14258,214 +14875,12 @@ return jQuery;
         root.Hook = pEvents;
     }
 }());
-},{"underscore":3}],12:[function(require,module,exports){
-(function(){
-    var root = this;
-    var Character = require('./character.js');
-    
-    function Monster(){
-        Character.apply(this,arguments);
-    }
-    
-    Monster.prototype = Character.prototype;
-    if(typeof module !== 'undefined' && module.exports){
-        module.exports = Monster;
-        root.Monster = Monster;
-    }else{
-        root.Monster = Monster;
-    }
-}());
-},{"./character.js":10}],13:[function(require,module,exports){
-(function(){
-    var root = this;
-    var _ = require('underscore');
-    function Stat(name,val,max,min){
-        this.modifiers = [];
-        this._baseValue = val || 0;
-        this._max;
-        this._min;
-        if(max != null) this._max = max;
-        if(min != null) this._min = min;
-    }
-    
-    Stat.prototype.increase = function(val){
-        this._baseValue += val;
-        this.clamp();
-        return this._baseValue;
-    };
-    
-    Stat.prototype.decrease = function(val){
-        this._baseValue -= val;
-        this.clamp();
-        return this._baseValue;
-    };
-    
-    Stat.prototype.change = function(val){
-        return val > 0 ? this.increase(val) : this.decrease(-val);
-    };
-    
-    Stat.prototype.baseValue = function(val,set){
-        if(set) this._baseValue = val;
-        else if(val !== undefined) this._baseValue += val;
-        this.clamp();
-        return this._baseValue;
-    };
-    
-    Stat.prototype.max = function(val,set){
-        if(set || this._max === undefined) this._max = val;
-        else if(val) this._max += val;
-        this.clamp();
-        return this._max;
-    };
-    
-    Stat.prototype.isMax = function(val){
-        return this._max != null ? (this._baseValue === this._max) : false;
-    };
-    
-    Stat.prototype.min = function(val,set){
-        if(set || this._min === undefined) this._min = val;
-        else if(val) this._min += val;
-        this.clamp();
-        return this._min;
-    };
-    
-    Stat.prototype.isMin = function(val){
-        return this._min != null ? (this._baseValue === this._min) : false;
-    };
-    
-    Stat.prototype.clamp = function(){
-        if( this._max != null && this._baseValue > this._max) this._baseValue = this._max;
-        if(this._min != null && this._baseValue < this._min) this._baseValue = this._min;
-    };
-    
-    Stat.prototype.isGreaterThan = function(stat,useTotal){
-        if(useTotal){
-            return this.getTotal() > stat.getTotal();
-        }
-        return this._baseValue > stat._baseValue;
-    };
-    
-    Stat.prototype.isLessThan = function(stat,useTotal){
-        if(useTotal){
-            return this.getTotal() < stat.getTotal();
-        }
-        return this._baseValue < stat._baseValue;
-    };
-    
-    Stat.prototype.isEqualTo = function(stat,fuzzy,useTotal){
-        if(useTotal){
-            return fuzzy ? Math.floor(this.getTotal()) === Math.floor(stat.getTotal()) : this.getTotal() === stat.getTotal();
-        }
-        return fuzzy ? Math.floor(this._baseValue) ===  Math.floor(stat._baseValue) : this._baseValue === stat._baseValue;
-    };
-    
-    Stat.prototype.add = function(stat, useTotal){
-        if(useTotal) return this.getTotal() + stat.getTotal();
-        return this.baseValue() + stat.baseValue();
-    };
-    
-    Stat.prototype.subtract = function(stat, useTotal){
-        if(useTotal) return this.getTotal() - stat.getTotal();
-        return this.baseValue() - stat.baseValue();
-    };
-    
-    Stat.prototype.multiply = function(stat, useTotal){
-        if(useTotal) return this.getTotal() * stat.getTotal();
-        return this.baseValue() * stat.baseValue();
-    };
-    
-    Stat.prototype.divide = function(stat, useTotal){
-        var st;
-        if(useTotal) {
-            st = stat.getTotal();
-            return this.getTotal() / (st > 0 ? st : 1 );
-        }
-        st = stat.baseValue();
-        return this.baseValue() / (st > 0 ? st : 1 );
-    };
-    
-    /*
-    * Add a modifier with a Flat or Percent Value value
-    * @param {String} type The type of modifier, flat or percentage
-    * @param {number|function} [value] Value to add. If its a function it will passed the stat object and owner. Functions are always calculated last
-    * @param {boolean} [before] Add the value after the main calculations. Default runs with the main calculations
-    * @return {object} The modifer object. Set destroy value when want to remove
-    */
-    Stat.prototype.addModifer = function(type,value,after){
-        var m = {
-            type : type,
-            value : value,
-            after : after || false,
-            destroy : false
-        };
-        if(_.isFunction(value) || after){
-            this.modifiers.unshift(m);
-        }else{
-            this.modifiers.push(m);
-        }
-        return m;
-    };
-    
-    Stat.prototype.getTotal = function(){
-        var i,
-            after = [],
-            perValues = 0,
-            t,
-            lv = 0,
-            len,
-            totals = {
-                flatTotal : 0,
-                totalAfterFlat : 0,
-                percentTotal : 0,
-                totalAfterPercent : 0,
-                total : 0
-            };
-        len = this.modifiers.length;
-        while(len--){
-            t = this.modifiers[len];
-            if(!t.destroy){
-                if(!t.after){
-                    if(_.isFunction(t.value)){
-                        totals[t.type+"Total"] += t.value(this);
-                    }else{
-                        totals[t.type+"Total"] += t.value;
-                    }
-                }else{
-                    after.push(t);
-                }
-            }else{
-                this.modifiers.splice(len,1);
-            }
-        }
-        if(after.length > 0){
-            for(i = 0; i < after.length; i++){
-                t = after[i];
-                t.value(this,totals);
-            }
-        }
-        totals.total += this._baseValue + totals.flatTotal;
-        totals.total += totals.total * (totals.percentTotal * 0.01);
-        if(this._min && totals.total < this._min){
-            totals.total = this._min;
-        }else if(this._max && totals.total > this._max){
-            totals.total = this._max;
-        }
-        return totals.total;
-    };
-    if(typeof module !== 'undefined' && module.exports){
-        module.exports = Stat;
-        root.Stat = Stat;
-    }else{
-        root.Stat = Stat;
-    }
-    
-}());
-},{"underscore":3}],14:[function(require,module,exports){
+},{"underscore":9}],25:[function(require,module,exports){
 (function(){
     var root = this;
     var ex = {};
     var _ = require('underscore');
-    var utils = require('../../utils.js');
+    var utils = require('tneb/utils.js');
     var events = {};
     events.registeredEvents = {};
     events._oldEvents = {};
@@ -14485,8 +14900,8 @@ return jQuery;
         return ret;
     };
     
-    function SpawnEvent(Game,monster){
-        var m = Game.create.Monster("Dickhead");
+    function SpawnEvent(Game,enemy){
+        var m = Game.create.Enemy("Dickhead");
         if(Game.systems.battle.active) return false;
         Game.systems.battle.start(Game.activePlayer,m);
         Game.global.events.trigger("system:event:"+this.toString());
@@ -14504,10 +14919,10 @@ return jQuery;
         root.GameEvents = ex;
     }
 }());
-},{"../../utils.js":17,"underscore":3}],15:[function(require,module,exports){
+},{"tneb/utils.js":29,"underscore":9}],26:[function(require,module,exports){
 (function(){
     var root = this;
-    var utils = require('../../utils.js');
+    var utils = require('tneb/utils.js');
     
     /*
     * All events for locaction come in the array format of : [Event,TimesCanHappen,Weight]
@@ -14548,13 +14963,58 @@ return jQuery;
         root.GameLocation = Location;
     }
 }());
-},{"../../utils.js":17}],16:[function(require,module,exports){
+},{"tneb/utils.js":29}],27:[function(require,module,exports){
 (function(){
     var modapi = {};
     modapi.version = "0.0.1";
     module.exports = modapi;
 }())
-},{}],17:[function(require,module,exports){
+},{}],28:[function(require,module,exports){
+(function(){
+    var root = this;
+    var $ = require('jQuery');
+    var _ = require('underscore');
+    var tmpl = require('tneb-templates/character-slot.hbs');
+    function UICharacter(character,parent, wrapper){
+        this.character = character;
+        this.updateUiChar();
+        this.template = tmpl;
+        this.parent = parent || document.body;
+        this.wrapper = wrapper || document.createElement('div');
+    }
+
+    UICharacter.prototype.updateUiChar = function() {
+        if(!this.uiChar){
+            this.uiChar = {
+                stats : {}
+            };
+        }
+        // Handle stats
+        // TODO: Handle res/pen objects correctly
+        _.each(this.character.stats, function(value,key){
+            this.uiChar.stats[key] = value;
+            this.uiChar.stats[key].baseValue = value.baseValue();
+            this.uiChar.stats[key].total = value.getTotals();
+        });
+        console.log(this.uiChar.stats, "ASSPIE");
+        this.uiChar.healthPercent = (this.uiChar.stats.health.baseValue() / this.uiChar.stats.health.max()) * 100;
+        this.uiChar.manaPercent = (this.uiChar.stats.mana.baseValue() / this.uiChar.stats.mana.max()) * 100;
+        this.uiChar.speedPercent = (this.uiChar.stats.speed.baseValue() / this.uiChar.stats.speed.max()) * 100;
+        this.uiChar.name = this.character.name;
+        this.uiChar.title = "Some title";
+    };
+
+    UICharacter.prototype.update = function(){
+        this.updateUiChar();
+        this.wrapper.innerHTML = this.template(this.uiChar);
+    };
+
+    if(typeof module !== 'undefined' && module.exports){
+        module.exports = UICharacter;
+    }
+    root.UICharacter = UICharacter;
+}());
+},{"jQuery":8,"tneb-templates/character-slot.hbs":30,"underscore":9}],29:[function(require,module,exports){
 (function(){
     var _ = require('underscore');
     var utils = {};
@@ -14600,4 +15060,39 @@ return jQuery;
         root.utils = utils;
     }
 }());
-},{"underscore":3}]},{},[7])
+},{"underscore":9}],30:[function(require,module,exports){
+// hbsfy compiled Handlebars template
+var Handlebars = require('hbsfy/runtime');
+module.exports = Handlebars.template(function (Handlebars,depth0,helpers,partials,data) {
+  this.compilerInfo = [4,'>= 1.0.0'];
+helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
+  var buffer = "", stack1, helper, functionType="function", escapeExpression=this.escapeExpression;
+
+
+  buffer += "<div class=\"party-slot row\">\r\n    <div class=\"col-lg-12 name-display\">\r\n        <span class=\"name\">";
+  if (helper = helpers.name) { stack1 = helper.call(depth0, {hash:{},data:data}); }
+  else { helper = (depth0 && depth0.name); stack1 = typeof helper === functionType ? helper.call(depth0, {hash:{},data:data}) : helper; }
+  buffer += escapeExpression(stack1)
+    + "</span><input class=\"form-control\" style=\"display:none;\" type=\"text\">\r\n        <span class=\"text-muted title\"></span>\r\n    </div>\r\n    <div class=\"health-display col-lg-6\">\r\n        <span class=\"name\">"
+    + escapeExpression(((stack1 = ((stack1 = ((stack1 = (depth0 && depth0.stats)),stack1 == null || stack1 === false ? stack1 : stack1.health)),stack1 == null || stack1 === false ? stack1 : stack1.name)),typeof stack1 === functionType ? stack1.apply(depth0) : stack1))
+    + "</span>\r\n        <span class=\"bar red\" style=\"width=";
+  if (helper = helpers.healthPercent) { stack1 = helper.call(depth0, {hash:{},data:data}); }
+  else { helper = (depth0 && depth0.healthPercent); stack1 = typeof helper === functionType ? helper.call(depth0, {hash:{},data:data}) : helper; }
+  buffer += escapeExpression(stack1)
+    + "%\"></span>\r\n    </div>\r\n    <div class=\"mana-display col-lg-6\">\r\n        <span class=\"stat-abbv\">"
+    + escapeExpression(((stack1 = ((stack1 = ((stack1 = (depth0 && depth0.stats)),stack1 == null || stack1 === false ? stack1 : stack1.mana)),stack1 == null || stack1 === false ? stack1 : stack1.name)),typeof stack1 === functionType ? stack1.apply(depth0) : stack1))
+    + "</span>\r\n        <span class=\"bar blue\" style=\"width=";
+  if (helper = helpers.manaPercent) { stack1 = helper.call(depth0, {hash:{},data:data}); }
+  else { helper = (depth0 && depth0.manaPercent); stack1 = typeof helper === functionType ? helper.call(depth0, {hash:{},data:data}) : helper; }
+  buffer += escapeExpression(stack1)
+    + "%\"></span>\r\n    </div>\r\n    <div class=\"exp-display col-lg-12\">\r\n        <span class=\"stat-abbv\">Exp</span>\r\n        <span class=\"bar orange\"></span>\r\n    </div>\r\n    <div class=\"speed-display col-lg-12\">\r\n        <span class=\"stat-abbv\">"
+    + escapeExpression(((stack1 = ((stack1 = ((stack1 = (depth0 && depth0.stats)),stack1 == null || stack1 === false ? stack1 : stack1.speed)),stack1 == null || stack1 === false ? stack1 : stack1.name)),typeof stack1 === functionType ? stack1.apply(depth0) : stack1))
+    + "</span>\r\n        <span class=\"bar blue\" style=\"width=";
+  if (helper = helpers.speedPercent) { stack1 = helper.call(depth0, {hash:{},data:data}); }
+  else { helper = (depth0 && depth0.speedPercent); stack1 = typeof helper === functionType ? helper.call(depth0, {hash:{},data:data}) : helper; }
+  buffer += escapeExpression(stack1)
+    + "%\"></span>\r\n    </div>\r\n    <button class=\"btn btn-block btn-info attack\">Attack</button>\r\n    <ul class=\"skills\">\r\n        <li>Fireball</li>\r\n    </ul>\r\n</div>";
+  return buffer;
+  });
+
+},{"hbsfy/runtime":15}]},{},[10])
