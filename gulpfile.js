@@ -14,16 +14,16 @@ var scssFiles = [
 ];
 
 gulp.task('browserify', function(){
-    return browserify('./src/js/tneb/game.js')
+    return browserify('./node_modules/tneb/game.js')
     .transform(hbsfy)
     .bundle()
     .pipe(source('main.js'))
     .pipe(gulp.dest(base + 'js/'));
 });
 
-gulp.task('update-templates', function(){
-    return gulp.src('./src/views/tneb-templates/**/*.hbs', {base : './src/views/tneb-templates/'})
-    .pipe(gulp.dest('./node_modules/tneb-templates'));
+gulp.task('move-templates', function(){
+    return gulp.src('./node_modules/tneb-templates/**/*.hbs', {base : './node_modules/tneb-templates/'})
+    .pipe(gulp.dest('./src/views/tneb-templates'));
 });
 
 gulp.task('move-static', function(){
@@ -37,9 +37,9 @@ gulp.task('sass', function(){
     .pipe(gulp.dest( base + 'css'));
 });
 
-gulp.task('update-main', function(){
-    return gulp.src('./src/js/tneb/**/*.js', {base : './src/js/tneb/'})
-    .pipe(gulp.dest('./node_modules/tneb'));
+gulp.task('move-main', function(){
+    return gulp.src('./node_modules/tneb/**/*.js', {base : './node_modules/tneb/'})
+    .pipe(gulp.dest('./src/js/tneb'));
 });
 
 gulp.task('dev', function(){
@@ -47,11 +47,11 @@ gulp.task('dev', function(){
     return gulp.run('sass', 'move-static', 'browserify');
 });
 
-gulp.task('update', ['update-main','update-templates']);
+gulp.task('src', ['move-main','move-templates']);
 
 gulp.task('watch', function(){
     base = "./dev/";
-    gulp.watch(['./src/js/tneb/**/*.js','./src/views/**/*.hbs'], ['browserify']);
+    gulp.watch(['./node_modules/tneb/**/*.js','./node_modules/tneb-templates/**/*.hbs'], ['browserify']);
     gulp.watch('./src/scss/**/*.scss', ['sass']);
     gulp.watch('./src/index.html',['move-static']);
 });
