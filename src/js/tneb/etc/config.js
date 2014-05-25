@@ -1,7 +1,9 @@
 (function(){
     // silly dance party
     var root = this;
-    var config = {};
+    var config = {
+        fps : 30
+    };
     config.battle = {
         armorMultiplier : 0.04,
         magicResMultiplier : 0.06,
