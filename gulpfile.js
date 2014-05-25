@@ -14,11 +14,16 @@ var scssFiles = [
 ];
 
 gulp.task('browserify', function(){
-    return browserify('./src/js/tneb/game.js', {paths : [ './node_modules', './src/js/', './src/views/'] })
+    return browserify('./src/js/tneb/game.js')
     .transform(hbsfy)
     .bundle()
     .pipe(source('main.js'))
     .pipe(gulp.dest(base + 'js/'));
+});
+
+gulp.task('update-templates', function(){
+    return gulp.src('./src/views/tneb-templates/**/*.hbs', {base : './src/views/tneb-templates/'})
+    .pipe(gulp.dest('./node_modules/tneb-templates'));
 });
 
 gulp.task('move-static', function(){
@@ -32,7 +37,7 @@ gulp.task('sass', function(){
     .pipe(gulp.dest( base + 'css'));
 });
 
-gulp.task('mochaplz', function(){
+gulp.task('update-main', function(){
     return gulp.src('./src/js/tneb/**/*.js', {base : './src/js/tneb/'})
     .pipe(gulp.dest('./node_modules/tneb'));
 });
@@ -41,6 +46,8 @@ gulp.task('dev', function(){
     base = './dev/';
     return gulp.run('sass', 'move-static', 'browserify');
 });
+
+gulp.task('update', ['update-main','update-templates']);
 
 gulp.task('watch', function(){
     base = "./dev/";
