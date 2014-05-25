@@ -1,0 +1,21 @@
+<div class="party-slot row">
+    <div class="col-lg-12 name-display">
+        <span class="text-muted prefix"></span>
+        <span class="name">{{name}}</span>
+    </div>
+    <div class="health-display col-lg-6">
+        <span class="name">{{stats.health.name}}</span>
+        <span class="bar red" style="width={{healthPercent}}%"></span>
+    </div>
+    <div class="mana-display col-lg-6">
+        <span class="name">{{stats.mana.name}}</span>
+        <span class="bar blue" style="width={{manaPercent}}%"></span>
+    </div>
+    <div class="speed-display col-lg-12">
+        <span class="name">{{stats.speed.name}}</span>
+        <span class="bar blue" style="width={{speedPercent}}%"></span>
+    </div>
+    <ul class="buffs">
+        <li>Haste</li>
+    </ul>
+</div>
