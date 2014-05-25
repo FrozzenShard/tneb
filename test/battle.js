@@ -1,10 +1,10 @@
 /*global describe, it*/
 var events = require('tneb/systems/map/events.js'),
-    Location = require('tneb/systems/map/location.js'),
+    Place = require('tneb/systems/map/place.js'),
     Create = require('tneb/create.js'),
     Character = require('tneb/systems/battle/character.js'),
     Battle = require('tneb/systems/battle/battle.js'),
-    Monster = require('tneb/systems/battle/monster.js'),
+    Enemy = require('tneb/systems/battle/enemy.js'),
     constants = require('tneb/etc/constants.js'),
     Mocks = require('./helpers/mocks.js'),
     Hook = require('tneb/systems/battle/hook.js'),

@@ -1,9 +1,5 @@
 /*global describe, it*/
-var events = require('tneb/systems/map/events.js'),
-    Location = require('tneb/systems/map/location.js'),
-    Create = require('tneb/create.js'),
-    Character = require('tneb/systems/battle/character.js'),
-    Monster = require('tneb/systems/battle/monster.js'),
+var Character = require('tneb/systems/battle/character.js'),
     constants = require('tneb/etc/constants.js'),
     config = require('tneb/etc/config.js');
 
