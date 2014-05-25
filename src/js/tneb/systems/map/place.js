@@ -36,8 +36,8 @@
     
     if(typeof module !== 'undefined' && module.exports){
         module.exports = Location;
-        root.GameLocation = Location;
+        root.Place = Location;
     }else{
-        root.GameLocation = Location;
+        root.Place = Location;
     }
 }());
