@@ -29,6 +29,7 @@
         windRes: "Wind Res",
         lightRes: "Light Res",
         darkRes: "Dark Res",
+        exp : "Exp",
         str: "Str",
         dex: "Dex",
         int: "Int",
