@@ -9,7 +9,7 @@
     var modApi = require('tneb/systems/mod/modapi.js');
     var hook = require('tneb/systems/battle/hook.js');
     var Create = require('tneb/create.js');
-    var Location = require('tneb/systems/map/location.js');
+    var Place = require('tneb/systems/map/place.js');
     var events = require('tneb/systems/map/events.js');
     var Player = require('tneb/player.js');
     var logger = require('tneb/logger');

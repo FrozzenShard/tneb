@@ -25,28 +25,30 @@
             bottom: null,
             accessory: null
         };
+        this.canAction = false;
         this.inventory = [];
         this.skills = [];
         this.battleRating = 0;
-        if(_.isObject(name)){
-            this.Game = name;
-            this.name = "Default name";
-        }else{
+        if(_.isString(name)){
             this.Game = Game;
             this.name = name;
+        }else{
+            this.Game = name;
+            this.name = "Default name";
         }
     }
     
     Character.prototype.convertToStatObj = function(stats){
-        stats.health = new Stat(constants.stats.health,stats.health,stats.health,0);
+        stats.health = new Stat(constants.stats.health, stats.health, stats.health,0);
         stats.level = new Stat(constants.stats.level, stats.level, config.maxLevel);
         stats.armor = new Stat(constants.stats.armor,stats.armor);
         stats.magicRes = new Stat(constants.stats.magicRes,stats.magicRes);
-        stats.mana = new Stat(constants.stats.mana, stats.mana);
+        stats.mana = new Stat(constants.stats.mana, stats.mana, stats.mana, 0);
         stats.healthRegen = new Stat(constants.stats.healthRegen, stats.healthRegen);
         stats.manaRegen = new Stat(constants.stats.manaRegen, stats.manaRegen);
         stats.physicalPower = new Stat(constants.stats.physicalPower, stats.physicalPower);
         stats.magicalPower = new Stat(constants.stats.magicalPower, stats.magicalPower);
+        stats.exp = new Stat(constants.stats.exp, 25,100,0);
         
         stats.str = new Stat(constants.stats.str, stats.str);
         stats.int = new Stat(constants.stats.int, stats.int);
@@ -93,6 +95,8 @@
     Character.prototype.doAction = function (target) {
         if (this.isAi) {
             return this.aiAction(target);
+        }else{
+            this.canAction = true;
         }
     };
 

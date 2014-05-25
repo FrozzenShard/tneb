@@ -7,7 +7,7 @@
     GameLogger.currentMessages = [];
     GameLogger.fullLog = [];
     GameLogger.el = $("#logger");
-    GameLogger.maxMessages = 3;
+    GameLogger.maxMessages = 8;
     el = GameLogger.el;
     GameLogger.log = function(type,message){
         var curTime = Date.now(),
@@ -16,7 +16,6 @@
         this.currentMessages.push({message : message, timestamp : curTime, type : type});
         if(this.currentMessages.length > this.maxMessages){
             this.currentMessages.splice(0,1);
-            console.log(this.currentMessages.length,this.currentMessages);
         }
         len = this.currentMessages.length;
         while(len--){
