@@ -10874,6 +10874,7 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
         this.ui = new UIBattleStats(this, this.character, document.getElementById("enemy-battle-stats"));
         this.Game = Game;
         this.lastFrame = {};
+        this.character.stats.speed.baseValue(0,true);
     }
     
     EnemyController.prototype.update = function(){
@@ -10917,7 +10918,7 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
 
     function Player(Game){
         this.name = _.sample(randomNames,1)[0];
-        this.character = new Character(null, this.name, this);
+        this.character = new Character({speedGain : 1000}, this.name, this);
         this.character.isAi = false;
         this.ui = new UIPlayerBattleStats(
             this,
@@ -10925,14 +10926,16 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
             document.getElementById("party-battle-stats"));
         this.Game = Game;
         this.lastFrame = {};
-        console.log(this.ui.uiData.attackBtn.$el);
+        this.character.stats.speed.baseValue(0,true);
+        this.ui.enableAttackBtn(true);
         this.ui.uiData.attackBtn.$el.click(function(evt){
-            console.log(this.target);
             if(this.target){
                 this.character.useSkill(
                     this.character.basicAttack(),
                     this.target)
+                this.ui.enableAttackBtn(true);
             }
+            console.log(this.target);
 
         });
     }
@@ -10943,7 +10946,7 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
     };
 
     Player.prototype.doAction = function(target){
-        this.ui.enableAttackBtn(true);
+        this.ui.enableAttackBtn(false);
         this.target = target;
     };
 
@@ -11221,7 +11224,8 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
         if (!this.active) return;
         var fasg = this.fighterA.stats.speedGain.getTotal() * this.Game.timer.elapsed;
         // I originally was going to abbrivate as FighterAspeedGain but that seemed like a bad idea.
-        var fbsg = this.fighterA.stats.speedGain.getTotal() * this.Game.timer.elapsed;
+        var fbsg = this.fighterB.stats.speedGain.getTotal() * this.Game.timer.elapsed;
+
         this.fighterA.stats.speed.increase(fasg);
         this.fighterB.stats.speed.increase(fbsg);
 
@@ -11599,8 +11603,8 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
             physicalPower: 0,
             magicalPower: 0,
             magicRes: 0.2,
-            speed: 50,
-            speedGain: 100,
+            speed: 500,
+            speedGain: 10,
             healthRegen: 0.2, // Internally represented as per second but displayed as per 5 to the player
             manaRegen: 0.125,
 
@@ -11660,7 +11664,7 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
         Character.apply(this,arguments);
     }
     
-    Enemy.prototype = Character.prototype;
+    Enemy.prototype = Object.create(Character.prototype);
     if(typeof module !== 'undefined' && module.exports){
         module.exports = Enemy;
         
