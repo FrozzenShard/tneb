@@ -47,7 +47,7 @@ gulp.task('dev', function(){
     return gulp.run('sass', 'move-static', 'browserify');
 });
 
-gulp.task('src', ['move-main','move-templates']);
+//gulp.task('src', ['move-main','move-templates']);
 
 gulp.task('watch', function(){
     base = "./dev/";
