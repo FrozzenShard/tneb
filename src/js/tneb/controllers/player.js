@@ -15,7 +15,7 @@
 
     function Player(Game){
         this.name = _.sample(randomNames,1)[0];
-        this.character = new Character({health : 10000}, this.name, this);
+        this.character = new Character(null, "Name", this);
         this.character.isAi = false;
         this.ui = new UIPlayerBattleStats(
             this,
@@ -25,14 +25,16 @@
         this.lastFrame = {};
         this.character.stats.speed.baseValue(0,true);
         this.ui.enableAttackBtn(true);
+        var self = this;
         this.ui.uiData.attackBtn.$el.click(function(evt){
-            if(this.target){
-                this.character.useSkill(
-                    this.character.basicAttack(),
-                    this.target)
-                this.ui.enableAttackBtn(true);
+            if(self.target){
+                self.character.useSkill(
+                    self.character.basicAttack(),
+                    self.target)
+                self.ui.enableAttackBtn(true);
+                self.character.stats.speed.baseValue(0,true);
+                self.character.canAction = true;
             }
-            console.log(this.target);
 
         });
     }
@@ -45,6 +47,7 @@
     Player.prototype.doAction = function(target){
         this.ui.enableAttackBtn(false);
         this.target = target;
+        this.character.canAction = false;
     };
 
     

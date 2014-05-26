@@ -207,7 +207,7 @@
             physicalPower: 0,
             magicalPower: 0,
             magicRes: 0.2,
-            speed: 500,
+            speed: 100,
             speedGain: 10,
             healthRegen: 0.2, // Internally represented as per second but displayed as per 5 to the player
             manaRegen: 0.125,

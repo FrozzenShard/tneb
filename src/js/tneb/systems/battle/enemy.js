@@ -6,7 +6,7 @@
         Character.apply(this,arguments);
     }
     
-    Enemy.prototype = Character.prototype;
+    Enemy.prototype = Object.create(Character.prototype);
     if(typeof module !== 'undefined' && module.exports){
         module.exports = Enemy;
         
