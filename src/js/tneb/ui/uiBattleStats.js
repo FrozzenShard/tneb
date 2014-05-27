@@ -2,9 +2,9 @@
     var root = this;
     var $ = require('jQuery');
     var _ = require('underscore');
-    var tmpl = require('tneb-templates/enemyBattleSlot.hbs');
     var Stat = require('tneb/systems/battle/stat');
     function UIBattleStats(controller, character, parent, wrapper){
+        var tmpl = require('tneb-templates/enemyBattleSlot.hbs');
         this.character = character;
         this.controller = controller;
         this.template = tmpl;
