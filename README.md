@@ -1,4 +1,4 @@
-Glory Foreverever (Working Title)
+tneb
 =================
 Fight forever, glory forever
 ----------------------------
@@ -14,7 +14,11 @@ Glory Forever is an RPG incremental where you explore and battle your way throug
 * Native mod support
 * Online saves
 
-Installation
+Installation(For non devs)
+=========================
+Download as a zip(see right bar), extract and run index.html in the dist/ directory
+
+Installation(For Devs)
 ============
 First you need [Node+Npm](http://nodejs.org/).
 
@@ -37,4 +41,6 @@ Default is to minify the files, if you want to run the files unminified run the 
 To test simple run mocha
 
     mocha
+
+The system expects the tneb and tneb-templates to be in the node_modules directory. You can copy them there manually or use npm link(recommended if you want to play around with the code).
 
