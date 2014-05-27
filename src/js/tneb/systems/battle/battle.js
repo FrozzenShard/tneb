@@ -20,7 +20,8 @@
     Battle.prototype.update = function () {
         if (!this.active) return;
         var fasg = this.fighterA.stats.speedGain.getTotal() * this.Game.timer.elapsed;
-        // I originally was going to abbrivate as FighterAspeedGain but that seemed like a bad idea.
+        // I originally was going to abbrivate as FighterAspeedGain
+        // but that seemed like a bad idea.
         var fbsg = this.fighterB.stats.speedGain.getTotal() * this.Game.timer.elapsed;
         
         if(this.fighterA.canAction) this.fighterA.stats.speed.increase(fasg);
@@ -31,8 +32,12 @@
         }
 
         if (this.fighterB.stats.speed.isMax()) {
-            if (this.actionQueue.length > 0 && (this.fighterA.stats.speed.max() - fasg) < (this.fighterB.stats.speed.max() - fbsg)) {
+            if (this.actionQueue.length > 0 &&
+                (this.fighterA.stats.speed.max() - fasg) <
+                (this.fighterB.stats.speed.max() - fbsg)) {
+
                 this.actionQueue.push([this.fighterB, this.fighterA]);
+
             } else {
                 this.actionQueue.unshift([this.fighterB, this.fighterA]);
             }
@@ -66,8 +71,8 @@
         this.active = true;
         fighterA.stats.speed.baseValue(0);
         fighterB.stats.speed.baseValue(0);
-        this.update();
         this.Game.global.events.once("system:character:death", this.end,this);
+        this.update();
         return this.active;
     };
 
