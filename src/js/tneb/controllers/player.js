@@ -13,31 +13,38 @@
 
     var UIPlayerBattleStats = require('tneb/ui/uiPlayerBattleStats.js');
 
-    function Player(Game){
+    function Player(Game,initUi,character){
         this.name = _.sample(randomNames,1)[0];
-        this.character = new Character(null, "Name", this);
-        this.character.isAi = false;
+        this.Game = Game;
+        this.lastFrame = {};
+        if(character) {
+            this.character = character;
+            this.character.controller = this;
+            this.character.stats.speed.baseValue(0,true);
+        }
+        if(initUi && character) this.initUi();
+        
+    }
+
+    Player.prototype.initUi = function(){
+        var self = this;
         this.ui = new UIPlayerBattleStats(
             this,
             this.character,
             document.getElementById("party-battle-stats"));
-        this.Game = Game;
-        this.lastFrame = {};
-        this.character.stats.speed.baseValue(0,true);
         this.ui.enableAttackBtn(true);
-        var self = this;
         this.ui.uiData.attackBtn.$el.click(function(evt){
             if(self.target){
                 self.character.useSkill(
                     self.character.basicAttack(),
-                    self.target)
+                    self.target);
                 self.ui.enableAttackBtn(true);
                 self.character.stats.speed.baseValue(0,true);
                 self.character.canAction = true;
             }
 
         });
-    }
+    };
 
     Player.prototype.initBattle = function(allies,enemies){
         this.allies = allies;
