@@ -8,7 +8,8 @@ var events = require('tneb/systems/map/events.js'),
     constants = require('tneb/etc/constants.js'),
     Mocks = require('./helpers/mocks.js'),
     Hook = require('tneb/systems/battle/hook.js'),
-    _ = require('underscore');
+    _ = require('underscore'),
+    EnemyController = require('tneb/controllers/EnemyController');
 
 var mocha = require('mocha'),
     chai = require('chai'),
@@ -24,12 +25,15 @@ describe("Battle", function(){
     
     it("Should start a battle and update", function(){
         var GameMock = Mocks.GameMock();
-        var fa = new Character(null,"Name", {Game : GameMock});
-        var fb = new Character(null,"name", {Game : GameMock});
+        var fa = new Character(null,GameMock);
+        var fb = new Character(null,GameMock);
+        var ecfa = new EnemyController(GameMock, false, fa);
+        var ecfb = new EnemyController(GameMock, false, fb);
         var startingSpeed = fa.stats.speed.baseValue();
         var b = new Battle(GameMock);
         var result = b.start(fa,fb);
         GameMock.timer.elapsed = 1;
+        b.update();
         expect(result).to.equal(true);
         expect(fa.stats.speed.baseValue()).to.be.above(startingSpeed);
     });
@@ -37,8 +41,12 @@ describe("Battle", function(){
     it("Should simulate an entire battle where fighterA wins", function(){
         var GameMock = Mocks.GameMock();
         _.extend(GameMock.global.events, Hook);
-        var fa = new Character({str : 50000, health : 10000},"name", {Game : GameMock});
-        var fb = new Character({str : 1, health : 50, armor : 0}, "name", {Game : GameMock});
+        var fa = new Character({str : 50000, health : 10000, speedGain : 9999},
+            "name");
+        var fb = new Character({str : 1, health : 50, armor : 0},
+            "name");
+        var ecfa = new EnemyController(GameMock, false, fa);
+        var ecfb = new EnemyController(GameMock, false, fb);
         var b = new Battle(GameMock);
         var count = 0;
         b.start(fa,fb);
@@ -51,6 +59,8 @@ describe("Battle", function(){
             count++;
         }
         expect(b.active).to.equal(false);
+        expect(fb.stats.health.baseValue()).to.equal(0);
+        expect(fa.stats.health.baseValue()).to.be.above(0);
         
     });
     

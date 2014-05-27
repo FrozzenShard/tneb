@@ -16,7 +16,6 @@ describe("calculator", function () {
             fire: 100
         }
     });
-    console.log(c.stats.armor.getTotal());
     describe("Armor Reduction", function () {
         it("Should reduce the compute the armor reduction values correctly", function () {
             var damage = 50;
