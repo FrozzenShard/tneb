@@ -10877,7 +10877,6 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
         if(initUi && character) this.initUi();
         this.Game = Game;
         this.lastFrame = {};
-        this.Game.global.events.once("player:death", this.playerDeath);
     }
 
     EnemyController.prototype.initUi = function(){
@@ -10910,12 +10909,14 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
     };
 
     EnemyController.prototype.tearDown = function(){
-
+        this.active = false;
+        this.ui.hide();
     };
 
     EnemyController.prototype.hasDied = function(){
-        this.ui.hide();
+        if(this.ui) this.ui.hide();
         this.active = false;
+        this.Game.controllers.player.battleEnd();
     };
     
     if(typeof module !== 'undefined' && module.exports){
@@ -10941,6 +10942,13 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
 
     var UIPlayerBattleStats = require('tneb/ui/uiPlayerBattleStats.js');
 
+
+    /**
+    * The Player controller
+    * {Game} Game A reference to the Game object
+    * {Boolean} [initUi] A boolean to determine whether or not to init the ui
+    * {Character} [character] The players character. Can be set later.  
+    */
     function Player(Game,initUi,character){
         this.name = _.sample(randomNames,1)[0];
         this.Game = Game;
@@ -10962,13 +10970,13 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
             this,
             this.character,
             document.getElementById("party-battle-stats"));
-        this.ui.enableAttackBtn(true);
+        this.ui.disableAttackBtn(false);
         this.ui.uiData.attackBtn.$el.click(function(evt){
             if(self.target){
                 self.character.useSkill(
                     self.character.basicAttack(),
                     self.target);
-                self.ui.enableAttackBtn(true);
+                self.ui.disableAttackBtn(true);
                 self.character.stats.speed.baseValue(0,true);
                 self.character.canAction = true;
             }
@@ -10982,7 +10990,7 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
     };
 
     Player.prototype.doAction = function(target){
-        this.ui.enableAttackBtn(false);
+        this.ui.disableAttackBtn(false);
         this.target = target;
         this.character.canAction = false;
     };
@@ -11000,6 +11008,14 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
     
     Player.prototype.render = function(){
         this.ui.render();
+    };
+
+    Player.prototype.hasDied = function(){
+        this.Game.controllers.enemy.tearDown();
+    };
+
+    Player.prototype.battleEnd = function(){
+        this.ui.disableAttackBtn(true);
     };
     
     if(typeof module !== 'undefined' && module.exports){
@@ -11161,7 +11177,7 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
     _.extend(Game.global.events,hook);
     Game.controllers = {
         enemy : new EnemyController(Game,true,new Character(null,"Raccoon")),
-        player : new Player(Game,true,new Character({speedGain:1000}))
+        player : new Player(Game,true,new Character({speedGain:500}))
     };
     Game.init = function(){
         Game.timer.lastTime = Date.now();
@@ -11469,6 +11485,7 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
             bottom: null,
             accessory: null
         };
+
         this.inventory = [];
         this.skills = [];
         this.battleRating = 0;
@@ -11501,7 +11518,7 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
         stats.resistances.dark = new Stat(constants.stats.darkRes, stats.resistances.dark);
         
         stats.speedGain = new Stat(constants.stats.speedGain, stats.speedGain);
-        stats.speed = new Stat(constants.stats.speed, stats.speed, config.battle.maxSpeed);
+        stats.speed = new Stat(constants.stats.speed, 0, stats.speed);
         
         stats.penetration.flat.fire = new Stat(constants.stats.penetration.flat.fire, stats.penetration.flat.fire);
         stats.penetration.flat.ice = new Stat(constants.stats.penetration.flat.ice, stats.penetration.flat.ice);
@@ -11650,8 +11667,8 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
             physicalPower: 0,
             magicalPower: 0,
             magicRes: 0.2,
-            speed: 100,
-            speedGain: 10,
+            speed: 1000,
+            speedGain: 100,
             healthRegen: 0.2, // Internally represented as per second but displayed as per 5 to the player
             manaRegen: 0.125,
 
@@ -12387,7 +12404,7 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
         this.uiData.speed.$bar.width( (this.uiData.speed.stat.baseValue() / this.uiData.speed.stat.max()) * 100 + "%");
     };
 
-    UIPlayerBattleStats.prototype.enableAttackBtn = function(enabled){
+    UIPlayerBattleStats.prototype.disableAttackBtn = function(enabled){
         this.uiData.attackBtn.$el.prop('disabled', enabled);
     };
 
