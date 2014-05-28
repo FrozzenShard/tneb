@@ -10,6 +10,7 @@
             this.character.controller = this;
             this.character.stats.speed.baseValue(0,true);
         }
+        this.active = true;
         if(initUi && character) this.initUi();
         this.Game = Game;
         this.lastFrame = {};
@@ -22,6 +23,7 @@
     };
     
     EnemyController.prototype.update = function(){
+        if(!this.active) return;
         this.character.stats.health.increase(
             this.character.stats.healthRegen.baseValue() *
             this.Game.timer.elapsed);
@@ -32,7 +34,8 @@
     };
     
     EnemyController.prototype.render = function(){
-        this.ui.render();
+        if(!this.active) return;
+        if(this.ui) this.ui.render();
     };
 
     EnemyController.prototype.doAction = function(target){
@@ -40,6 +43,17 @@
             this.character.basicAttack(),
             target);
         this.character.stats.speed.baseValue(0,true);
+    };
+
+    EnemyController.prototype.tearDown = function(){
+        this.active = false;
+        this.ui.hide();
+    };
+
+    EnemyController.prototype.hasDied = function(){
+        if(this.ui) this.ui.hide();
+        this.active = false;
+        this.Game.controllers.player.battleEnd();
     };
     
     if(typeof module !== 'undefined' && module.exports){
