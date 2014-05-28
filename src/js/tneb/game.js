@@ -13,41 +13,45 @@
     var Player = require('tneb/controllers/player.js');
     var EnemyController = require('tneb/controllers/enemyController.js');
     var logger = require('tneb/logger');
-    
+
     var Game = {};
     Game.systems = {};
-    Game.updateList = [];
     Game.timer = {
         elapsed : 1,
         lastTime : 1,
         timeout : -1
     };
-    Game.controllers = [];
     Game.global = {};
     Game.global.events = {};
     _.extend(Game.global.events,hook);
+    Game.controllers = {
+        enemy : new EnemyController(Game,true,new Character(null,"Raccoon")),
+        player : new Player(Game,true,new Character({speedGain:500}))
+    };
     Game.init = function(){
-        var ec = new EnemyController(this);
-        Game.activePlayer = new Player(this);
-        Game.updateList.push(this.activePlayer);
-        Game.updateList.push(ec);
         Game.timer.lastTime = Date.now();
         Game.loop();
         Game.systems.battle = new Battle(this);
-        Game.updateList.push(Game.systems.battle);
         Game.create = Create(this);
-        console.log(this.updateList);
-        Game.systems.battle.start(this.activePlayer.character, ec.character);
+        Game.systems.battle.start(
+            this.controllers.player.character, 
+            this.controllers.enemy.character);
     };
     
     Game.update = function(){
-        this.updateList.forEach(function(val){
-            val.update();
+        _.each(this.systems, function(val,key){
+            if(val) val.update();
+        });
+        _.each(this.controllers, function(val,key){
+            if(val) val.update();
         });
     };
     Game.render = function(){
-        this.updateList.forEach(function(val){
-            val.render();
+        _.each(this.systems, function(val,key){
+            if(val) val.render();
+        });
+        _.each(this.controllers, function(val,key){
+            if(val) val.render();
         });
     };
     Game.loop = function(){
