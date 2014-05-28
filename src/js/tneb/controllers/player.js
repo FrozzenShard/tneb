@@ -13,14 +13,23 @@
 
     var UIPlayerBattleStats = require('tneb/ui/uiPlayerBattleStats.js');
 
+
+    /**
+    * The Player controller
+    * {Game} Game A reference to the Game object
+    * {Boolean} [initUi] A boolean to determine whether or not to init the ui
+    * {Character} [character] The players character. Can be set later.  
+    */
     function Player(Game,initUi,character){
         this.name = _.sample(randomNames,1)[0];
         this.Game = Game;
         this.lastFrame = {};
+        this.active = true;
         if(character) {
             this.character = character;
             this.character.controller = this;
             this.character.stats.speed.baseValue(0,true);
+            this.character.name = this.name;
         }
         if(initUi && character) this.initUi();
         
@@ -32,13 +41,13 @@
             this,
             this.character,
             document.getElementById("party-battle-stats"));
-        this.ui.enableAttackBtn(true);
+        this.ui.disableAttackBtn(false);
         this.ui.uiData.attackBtn.$el.click(function(evt){
             if(self.target){
                 self.character.useSkill(
                     self.character.basicAttack(),
                     self.target);
-                self.ui.enableAttackBtn(true);
+                self.ui.disableAttackBtn(true);
                 self.character.stats.speed.baseValue(0,true);
                 self.character.canAction = true;
             }
@@ -52,7 +61,7 @@
     };
 
     Player.prototype.doAction = function(target){
-        this.ui.enableAttackBtn(false);
+        this.ui.disableAttackBtn(false);
         this.target = target;
         this.character.canAction = false;
     };
@@ -70,6 +79,14 @@
     
     Player.prototype.render = function(){
         this.ui.render();
+    };
+
+    Player.prototype.hasDied = function(){
+        this.Game.controllers.enemy.tearDown();
+    };
+
+    Player.prototype.battleEnd = function(){
+        this.ui.disableAttackBtn(true);
     };
     
     if(typeof module !== 'undefined' && module.exports){
