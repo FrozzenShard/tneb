@@ -70,8 +70,8 @@
     };
 
     UIPlayerBattleStats.prototype.render = function(){
-        this.uiData.name.$name.text(this.controller.name);
-        this.uiData.name.$title.text(this.controller.name);
+        this.uiData.name.$name.text(this.character.name);
+        //this.uiData.name.$title.text(this.character.equipped.title.name);
         this.uiData.health.$name.text(this.uiData.health.stat.name);
         this.uiData.mana.$name.text(this.uiData.mana.stat.name);
         this.uiData.exp.$name.text(this.uiData.exp.stat.name);
@@ -83,7 +83,7 @@
         this.uiData.speed.$bar.width( (this.uiData.speed.stat.baseValue() / this.uiData.speed.stat.max()) * 100 + "%");
     };
 
-    UIPlayerBattleStats.prototype.enableAttackBtn = function(enabled){
+    UIPlayerBattleStats.prototype.disableAttackBtn = function(enabled){
         this.uiData.attackBtn.$el.prop('disabled', enabled);
     };
 
