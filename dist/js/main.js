@@ -10867,23 +10867,39 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
     var $ = require('jQuery');
     var _ = require('underscore');
     var UIBattleStats = require('tneb/ui/uiBattleStats.js');
-    function EnemyController(Game){
-        this.name = "Racoon";
-        this.character = new Character(null, this.name, this);
-        this.character.isAi = false;
-        this.ui = new UIBattleStats(this, this.character, document.getElementById("enemy-battle-stats"));
+    function EnemyController(Game, initUi, character){
+        if(character) {
+            this.character = character;
+            this.character.controller = this;
+            this.character.stats.speed.baseValue(0,true);
+        }
+        this.active = true;
+        if(initUi && character) this.initUi();
         this.Game = Game;
         this.lastFrame = {};
-        this.character.stats.speed.baseValue(0,true);
+        this.Game.global.events.once("player:death", this.playerDeath);
     }
+
+    EnemyController.prototype.initUi = function(){
+        this.ui = new UIBattleStats(this,
+            this.character,
+            document.getElementById("enemy-battle-stats"));
+    };
     
     EnemyController.prototype.update = function(){
-        this.character.stats.health.increase(this.character.stats.healthRegen.baseValue() * this.Game.timer.elapsed);
-        this.character.stats.mana.increase(this.character.stats.manaRegen.baseValue() * this.Game.timer.elapsed);
+        if(!this.active) return;
+        this.character.stats.health.increase(
+            this.character.stats.healthRegen.baseValue() *
+            this.Game.timer.elapsed);
+
+        this.character.stats.mana.increase(
+            this.character.stats.manaRegen.baseValue() *
+            this.Game.timer.elapsed);
     };
     
     EnemyController.prototype.render = function(){
-        this.ui.render();
+        if(!this.active) return;
+        if(this.ui) this.ui.render();
     };
 
     EnemyController.prototype.doAction = function(target){
@@ -10891,6 +10907,15 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
             this.character.basicAttack(),
             target);
         this.character.stats.speed.baseValue(0,true);
+    };
+
+    EnemyController.prototype.tearDown = function(){
+
+    };
+
+    EnemyController.prototype.hasDied = function(){
+        this.ui.hide();
+        this.active = false;
     };
     
     if(typeof module !== 'undefined' && module.exports){
@@ -10916,29 +10941,40 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
 
     var UIPlayerBattleStats = require('tneb/ui/uiPlayerBattleStats.js');
 
-    function Player(Game){
+    function Player(Game,initUi,character){
         this.name = _.sample(randomNames,1)[0];
-        this.character = new Character({speedGain : 1000}, this.name, this);
-        this.character.isAi = false;
+        this.Game = Game;
+        this.lastFrame = {};
+        this.active = true;
+        if(character) {
+            this.character = character;
+            this.character.controller = this;
+            this.character.stats.speed.baseValue(0,true);
+            this.character.name = this.name;
+        }
+        if(initUi && character) this.initUi();
+        
+    }
+
+    Player.prototype.initUi = function(){
+        var self = this;
         this.ui = new UIPlayerBattleStats(
             this,
             this.character,
             document.getElementById("party-battle-stats"));
-        this.Game = Game;
-        this.lastFrame = {};
-        this.character.stats.speed.baseValue(0,true);
         this.ui.enableAttackBtn(true);
         this.ui.uiData.attackBtn.$el.click(function(evt){
-            if(this.target){
-                this.character.useSkill(
-                    this.character.basicAttack(),
-                    this.target)
-                this.ui.enableAttackBtn(true);
+            if(self.target){
+                self.character.useSkill(
+                    self.character.basicAttack(),
+                    self.target);
+                self.ui.enableAttackBtn(true);
+                self.character.stats.speed.baseValue(0,true);
+                self.character.canAction = true;
             }
-            console.log(this.target);
 
         });
-    }
+    };
 
     Player.prototype.initBattle = function(allies,enemies){
         this.allies = allies;
@@ -10948,6 +10984,7 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
     Player.prototype.doAction = function(target){
         this.ui.enableAttackBtn(false);
         this.target = target;
+        this.character.canAction = false;
     };
 
     
@@ -11111,41 +11148,45 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
     var Player = require('tneb/controllers/player.js');
     var EnemyController = require('tneb/controllers/enemyController.js');
     var logger = require('tneb/logger');
-    
+
     var Game = {};
     Game.systems = {};
-    Game.updateList = [];
     Game.timer = {
         elapsed : 1,
         lastTime : 1,
         timeout : -1
     };
-    Game.controllers = [];
     Game.global = {};
     Game.global.events = {};
     _.extend(Game.global.events,hook);
+    Game.controllers = {
+        enemy : new EnemyController(Game,true,new Character(null,"Raccoon")),
+        player : new Player(Game,true,new Character({speedGain:1000}))
+    };
     Game.init = function(){
-        var ec = new EnemyController(this);
-        Game.activePlayer = new Player(this);
-        Game.updateList.push(this.activePlayer);
-        Game.updateList.push(ec);
         Game.timer.lastTime = Date.now();
         Game.loop();
         Game.systems.battle = new Battle(this);
-        Game.updateList.push(Game.systems.battle);
         Game.create = Create(this);
-        console.log(this.updateList);
-        Game.systems.battle.start(this.activePlayer.character, ec.character);
+        Game.systems.battle.start(
+            this.controllers.player.character, 
+            this.controllers.enemy.character);
     };
     
     Game.update = function(){
-        this.updateList.forEach(function(val){
-            val.update();
+        _.each(this.systems, function(val,key){
+            if(val) val.update();
+        });
+        _.each(this.controllers, function(val,key){
+            if(val) val.update();
         });
     };
     Game.render = function(){
-        this.updateList.forEach(function(val){
-            val.render();
+        _.each(this.systems, function(val,key){
+            if(val) val.render();
+        });
+        _.each(this.controllers, function(val,key){
+            if(val) val.render();
         });
     };
     Game.loop = function(){
@@ -11223,19 +11264,24 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
     Battle.prototype.update = function () {
         if (!this.active) return;
         var fasg = this.fighterA.stats.speedGain.getTotal() * this.Game.timer.elapsed;
-        // I originally was going to abbrivate as FighterAspeedGain but that seemed like a bad idea.
+        // I originally was going to abbrivate as FighterAspeedGain
+        // but that seemed like a bad idea.
         var fbsg = this.fighterB.stats.speedGain.getTotal() * this.Game.timer.elapsed;
-
-        this.fighterA.stats.speed.increase(fasg);
-        this.fighterB.stats.speed.increase(fbsg);
+        
+        if(this.fighterA.canAction) this.fighterA.stats.speed.increase(fasg);
+        if(this.fighterB.canAction) this.fighterB.stats.speed.increase(fbsg);
 
         if (this.fighterA.stats.speed.isMax()) {
             this.actionQueue.push([this.fighterA, this.fighterB]);
         }
 
         if (this.fighterB.stats.speed.isMax()) {
-            if (this.actionQueue.length > 0 && (this.fighterA.stats.speed.max() - fasg) < (this.fighterB.stats.speed.max() - fbsg)) {
+            if (this.actionQueue.length > 0 &&
+                (this.fighterA.stats.speed.max() - fasg) <
+                (this.fighterB.stats.speed.max() - fbsg)) {
+
                 this.actionQueue.push([this.fighterB, this.fighterA]);
+
             } else {
                 this.actionQueue.unshift([this.fighterB, this.fighterA]);
             }
@@ -11269,8 +11315,8 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
         this.active = true;
         fighterA.stats.speed.baseValue(0);
         fighterB.stats.speed.baseValue(0);
-        this.update();
         this.Game.global.events.once("system:character:death", this.end,this);
+        this.update();
         return this.active;
     };
 
@@ -11582,6 +11628,7 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
         this.stats.health.change(val);
         if (this.stats.health.baseValue() < 1) {
             this.controller.Game.global.events.trigger('system:character:death', this);
+            this.controller.hasDied();
         }
     };
 
@@ -11603,7 +11650,7 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
             physicalPower: 0,
             magicalPower: 0,
             magicRes: 0.2,
-            speed: 500,
+            speed: 100,
             speedGain: 10,
             healthRegen: 0.2, // Internally represented as per second but displayed as per 5 to the player
             manaRegen: 0.125,
@@ -12166,18 +12213,18 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
     var root = this;
     var $ = require('jQuery');
     var _ = require('underscore');
-    var tmpl = require('tneb-templates/enemyBattleSlot.hbs');
     var Stat = require('tneb/systems/battle/stat');
     function UIBattleStats(controller, character, parent, wrapper){
         this.character = character;
         this.controller = controller;
-        this.template = tmpl;
+        this.hidden = false;
+        this.template = require('tneb-templates/enemyBattleSlot.hbs');
         this.parent = parent || document.body;
         this.wrapper = wrapper || document.createElement('div');
         this.parent.appendChild(this.wrapper);
         this.$parent = $(this.parent);
         this.$wrapper = $(this.wrapper);
-        this.$wrapper.html(tmpl(this.templateData));
+        this.$wrapper.html(this.template(this.templateData));
         this.createUiData();
     }
 
@@ -12221,14 +12268,32 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
     };
 
     UIBattleStats.prototype.render = function(){
-        this.uiData.name.$name.text(this.controller.name);
+        this.uiData.name.$name.text(this.character.name);
         this.uiData.health.$name.text(this.uiData.health.stat.name);
         this.uiData.mana.$name.text(this.uiData.mana.stat.name);
         this.uiData.speed.$name.text(this.uiData.speed.stat.name);
 
-        this.uiData.health.$bar.width( (this.uiData.health.stat.baseValue() / this.uiData.health.stat.max()) * 100 + "%");
-        this.uiData.mana.$bar.width( (this.uiData.mana.stat.baseValue() / this.uiData.mana.stat.max()) * 100 + "%");
-        this.uiData.speed.$bar.width( (this.uiData.speed.stat.baseValue() / this.uiData.speed.stat.max()) * 100 + "%");
+        this.uiData.health.$bar.width(
+            (this.uiData.health.stat.baseValue() /
+            this.uiData.health.stat.max()) * 100 + "%");
+
+        this.uiData.mana.$bar.width(
+            (this.uiData.mana.stat.baseValue() /
+            this.uiData.mana.stat.max()) * 100 + "%");
+
+        this.uiData.speed.$bar.width(
+        (this.uiData.speed.stat.baseValue() /
+        this.uiData.speed.stat.max()) * 100 + "%");
+    };
+
+    UIBattleStats.prototype.hide = function(){
+        this.hidden = true;
+        this.$wrapper.hide();
+    };
+
+    UIBattleStats.prototype.show = function(){
+        this.hidden = false;
+        this.$wrapper.show();
     };
 
     if(typeof module !== 'undefined' && module.exports){
@@ -12309,8 +12374,8 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
     };
 
     UIPlayerBattleStats.prototype.render = function(){
-        this.uiData.name.$name.text(this.controller.name);
-        this.uiData.name.$title.text(this.controller.name);
+        this.uiData.name.$name.text(this.character.name);
+        //this.uiData.name.$title.text(this.character.equipped.title.name);
         this.uiData.health.$name.text(this.uiData.health.stat.name);
         this.uiData.mana.$name.text(this.uiData.mana.stat.name);
         this.uiData.exp.$name.text(this.uiData.exp.stat.name);
