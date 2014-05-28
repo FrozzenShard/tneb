@@ -27,6 +27,7 @@
             bottom: null,
             accessory: null
         };
+
         this.inventory = [];
         this.skills = [];
         this.battleRating = 0;
@@ -59,7 +60,7 @@
         stats.resistances.dark = new Stat(constants.stats.darkRes, stats.resistances.dark);
         
         stats.speedGain = new Stat(constants.stats.speedGain, stats.speedGain);
-        stats.speed = new Stat(constants.stats.speed, stats.speed, config.battle.maxSpeed);
+        stats.speed = new Stat(constants.stats.speed, 0, stats.speed);
         
         stats.penetration.flat.fire = new Stat(constants.stats.penetration.flat.fire, stats.penetration.flat.fire);
         stats.penetration.flat.ice = new Stat(constants.stats.penetration.flat.ice, stats.penetration.flat.ice);
@@ -186,6 +187,7 @@
         this.stats.health.change(val);
         if (this.stats.health.baseValue() < 1) {
             this.controller.Game.global.events.trigger('system:character:death', this);
+            this.controller.hasDied();
         }
     };
 
@@ -207,8 +209,8 @@
             physicalPower: 0,
             magicalPower: 0,
             magicRes: 0.2,
-            speed: 100,
-            speedGain: 10,
+            speed: 1000,
+            speedGain: 100,
             healthRegen: 0.2, // Internally represented as per second but displayed as per 5 to the player
             manaRegen: 0.125,
 
