@@ -51,7 +51,7 @@ gulp.task('dev', function(){
 
 gulp.task('watch', function(){
     base = "./dev/";
-    gulp.watch(['./node_modules/tneb/**/*.js','./node_modules/tneb-templates/**/*.hbs'], ['browserify']);
+    gulp.watch(['./src/js/tneb/**/*.js','./src/views/tneb-templates/**/*.hbs'], ['browserify']);
     gulp.watch('./src/scss/**/*.scss', ['sass']);
     gulp.watch('./src/index.html',['move-static']);
 });
