@@ -4,16 +4,16 @@
     var _ = require('underscore');
     var Stat = require('tneb/systems/battle/stat');
     function UIBattleStats(controller, character, parent, wrapper){
-        var tmpl = require('tneb-templates/enemyBattleSlot.hbs');
         this.character = character;
         this.controller = controller;
-        this.template = tmpl;
+        this.hidden = false;
+        this.template = require('tneb-templates/enemyBattleSlot.hbs');
         this.parent = parent || document.body;
         this.wrapper = wrapper || document.createElement('div');
         this.parent.appendChild(this.wrapper);
         this.$parent = $(this.parent);
         this.$wrapper = $(this.wrapper);
-        this.$wrapper.html(tmpl(this.templateData));
+        this.$wrapper.html(this.template(this.templateData));
         this.createUiData();
     }
 
@@ -57,14 +57,32 @@
     };
 
     UIBattleStats.prototype.render = function(){
-        this.uiData.name.$name.text(this.controller.name);
+        this.uiData.name.$name.text(this.character.name);
         this.uiData.health.$name.text(this.uiData.health.stat.name);
         this.uiData.mana.$name.text(this.uiData.mana.stat.name);
         this.uiData.speed.$name.text(this.uiData.speed.stat.name);
 
-        this.uiData.health.$bar.width( (this.uiData.health.stat.baseValue() / this.uiData.health.stat.max()) * 100 + "%");
-        this.uiData.mana.$bar.width( (this.uiData.mana.stat.baseValue() / this.uiData.mana.stat.max()) * 100 + "%");
-        this.uiData.speed.$bar.width( (this.uiData.speed.stat.baseValue() / this.uiData.speed.stat.max()) * 100 + "%");
+        this.uiData.health.$bar.width(
+            (this.uiData.health.stat.baseValue() /
+            this.uiData.health.stat.max()) * 100 + "%");
+
+        this.uiData.mana.$bar.width(
+            (this.uiData.mana.stat.baseValue() /
+            this.uiData.mana.stat.max()) * 100 + "%");
+
+        this.uiData.speed.$bar.width(
+        (this.uiData.speed.stat.baseValue() /
+        this.uiData.speed.stat.max()) * 100 + "%");
+    };
+
+    UIBattleStats.prototype.hide = function(){
+        this.hidden = true;
+        this.$wrapper.hide();
+    };
+
+    UIBattleStats.prototype.show = function(){
+        this.hidden = false;
+        this.$wrapper.show();
     };
 
     if(typeof module !== 'undefined' && module.exports){
