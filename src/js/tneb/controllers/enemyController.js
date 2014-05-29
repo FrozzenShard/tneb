@@ -19,7 +19,7 @@
     EnemyController.prototype.initUi = function(){
         this.ui = new UIBattleStats(this,
             this.character,
-            document.getElementById("enemy-battle-stats"));
+            document.getElementById("enemy-battle-info"));
     };
     
     EnemyController.prototype.update = function(){
@@ -48,6 +48,15 @@
     EnemyController.prototype.tearDown = function(){
         this.active = false;
         this.ui.hide();
+    };
+
+    EnemyController.prototype.log = function(){
+        var args = Array.prototype.slice.call(arguments);
+        var type = args[0];
+        if(type === 'takenDamage'){
+            var source = args[3];
+            root.GameLogger.log(type,this.character.name + " has dealt " + Math.floor(args[1]) + " damage to " + source.target.name );
+        }
     };
 
     EnemyController.prototype.hasDied = function(){

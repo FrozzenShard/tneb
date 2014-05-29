@@ -173,14 +173,19 @@
             total += damage.beforeRes;
         }
         total += damage.afterRes ? damage.afterRes(source) : 0;
-        this.takeDamage(total, damage.type, el, damage.isPure);
+        this.takeDamage(total, damage, source);
         if (damage.callback) damage.callback(total, damage, source);
         return total;
     };
 
-    Character.prototype.takeDamage = function (val, type, el, pure) {
+    Character.prototype.takeDamage = function (val, damage, source) {
         this.changeHealth(-val);
-        this.controller.Game.global.events.trigger('system:battle:takenDamage:', val, type, el, pure);
+        source.user.log("takenDamage", val , damage, source);
+        this.controller.Game.global.events.trigger('system:battle:takenDamage:', val, damage, source);
+    };
+
+    Character.prototype.log = function(){
+        this.controller.log.apply(this.controller, arguments);
     };
 
     Character.prototype.changeHealth = function (val) {

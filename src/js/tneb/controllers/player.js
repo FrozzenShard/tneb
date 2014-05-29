@@ -40,7 +40,7 @@
         this.ui = new UIPlayerBattleStats(
             this,
             this.character,
-            document.getElementById("party-battle-stats"));
+            document.getElementById("player-battle-info"));
         this.ui.disableAttackBtn(false);
         this.ui.uiData.attackBtn.$el.click(function(evt){
             if(self.target){
@@ -53,6 +53,17 @@
             }
 
         });
+    };
+
+    Player.prototype.log = function(){
+        var args = Array.prototype.slice.call(arguments);
+        var type = args[0];
+        if(type === 'takenDamage'){
+            var source = args[3];
+            root.GameLogger.log(
+                type,
+                this.name + " has dealt " + Math.floor(args[1]) + " damage to " + source.target.name );
+        }
     };
 
     Player.prototype.initBattle = function(allies,enemies){
