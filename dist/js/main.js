@@ -10882,7 +10882,7 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
     EnemyController.prototype.initUi = function(){
         this.ui = new UIBattleStats(this,
             this.character,
-            document.getElementById("enemy-battle-stats"));
+            document.getElementById("enemy-battle-info"));
     };
     
     EnemyController.prototype.update = function(){
@@ -10911,6 +10911,15 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
     EnemyController.prototype.tearDown = function(){
         this.active = false;
         this.ui.hide();
+    };
+
+    EnemyController.prototype.log = function(){
+        var args = Array.prototype.slice.call(arguments);
+        var type = args[0];
+        if(type === 'takenDamage'){
+            var source = args[3];
+            root.GameLogger.log(type,this.character.name + " has dealt " + Math.floor(args[1]) + " damage to " + source.target.name );
+        }
     };
 
     EnemyController.prototype.hasDied = function(){
@@ -10969,7 +10978,7 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
         this.ui = new UIPlayerBattleStats(
             this,
             this.character,
-            document.getElementById("party-battle-stats"));
+            document.getElementById("player-battle-info"));
         this.ui.disableAttackBtn(false);
         this.ui.uiData.attackBtn.$el.click(function(evt){
             if(self.target){
@@ -10982,6 +10991,17 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
             }
 
         });
+    };
+
+    Player.prototype.log = function(){
+        var args = Array.prototype.slice.call(arguments);
+        var type = args[0];
+        if(type === 'takenDamage'){
+            var source = args[3];
+            root.GameLogger.log(
+                type,
+                this.name + " has dealt " + Math.floor(args[1]) + " damage to " + source.target.name );
+        }
     };
 
     Player.prototype.initBattle = function(allies,enemies){
@@ -11631,14 +11651,19 @@ helpers = this.merge(helpers, Handlebars.helpers); data = data || {};
             total += damage.beforeRes;
         }
         total += damage.afterRes ? damage.afterRes(source) : 0;
-        this.takeDamage(total, damage.type, el, damage.isPure);
+        this.takeDamage(total, damage, source);
         if (damage.callback) damage.callback(total, damage, source);
         return total;
     };
 
-    Character.prototype.takeDamage = function (val, type, el, pure) {
+    Character.prototype.takeDamage = function (val, damage, source) {
         this.changeHealth(-val);
-        this.controller.Game.global.events.trigger('system:battle:takenDamage:', val, type, el, pure);
+        source.user.log("takenDamage", val , damage, source);
+        this.controller.Game.global.events.trigger('system:battle:takenDamage:', val, damage, source);
+    };
+
+    Character.prototype.log = function(){
+        this.controller.log.apply(this.controller, arguments);
     };
 
     Character.prototype.changeHealth = function (val) {
